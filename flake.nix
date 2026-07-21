@@ -11,17 +11,13 @@
       forAllSystems = f: nixpkgs.lib.genAttrs systems f;
     in
     {
-      # Extraction in progress: this repo is being pulled out of a private
-      # production configuration. Planned app attrset:
-      #
-      #   kubernetesModules.llm-serving - the shared LLM lane (flagship, first):
-      #                                   llama-swap + llama.cpp broker, LiteLLM
-      #                                   front, store-scan config generator
-      #
-      # Further tenants (image generation, TTS, ...) follow as they are
-      # generalized. GPU apps declare the nixgpu contract (priority class,
-      # Recreate strategy, device token) and nothing else.
-      kubernetesModules = { };
+      # nixidy modules (github:arnarg/nixidy) — imported into a nixidy env's
+      # `modules` list. Tenants land here as they are generalized from the
+      # originating production cluster (image generation, TTS, ...). The LLM
+      # serving lane graduated to its own sibling project, nixllm. GPU apps
+      # declare the nixgpu contract (priority class, Recreate strategy,
+      # device token) and nothing else.
+      nixidyModules = { };
 
       lib = { };
 

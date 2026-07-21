@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <title>nixapps &mdash; a curated library of self-hosted app modules for nixidy + Argo CD</title>
-  <meta name="description" content="A curated library of self-hosted application modules for a nixidy + Argo CD cluster: apps as typed Nix, not copy-pasted YAML. Flagship LLM serving lane extraction in progress. Pre-alpha.">
+  <meta name="description" content="A curated library of self-hosted application modules for a nixidy + Argo CD cluster: apps as typed Nix, not copy-pasted YAML. The LLM serving lane graduated to nixllm; first tenants (image generation, TTS) pending. Pre-alpha.">
 
   <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
@@ -52,28 +52,32 @@
 
 <section id="status" class="how-it-works">
   <div class="container">
-    <h2>Status: pre-alpha, extraction not started</h2>
+    <h2>Status: pre-alpha, first tenants pending</h2>
     <div class="steps">
       <div class="step">
         <div class="step-num">!</div>
-        <h3>Nothing extracted yet</h3>
-        <p>Every app described below runs in production on a single shared-GPU
-        cluster. This repo will carry their generalized modules, but no module
-        has landed here yet &mdash; modules are landing now, not available.</p>
+        <h3>Nothing landed here yet</h3>
+        <p>Every app planned for this repo runs in production on a single
+        shared-GPU cluster, but the generalized modules for this repo's own
+        tenants (image generation, TTS, &hellip;) have not been extracted
+        yet.</p>
       </div>
       <div class="step">
         <div class="step-num">!</div>
-        <h3>The mechanism is real and production-proven</h3>
-        <p>The flagship LLM serving lane &mdash; one shared server, the model
-        store as its own registry &mdash; runs today in production. What's
-        pending is packaging it as a documented, neutral-default nixidy module.</p>
+        <h3>The LLM serving lane graduated</h3>
+        <p>It started here, was the first thing generalized, and has since
+        moved to its own project:
+        <a href="https://nixllm.corbet.ch">nixllm</a>. LLM-consuming apps
+        still integrate the same way &mdash; a key and a model name, no GPU of
+        their own.</p>
       </div>
       <div class="step">
         <div class="step-num">!</div>
         <h3>No invented modules or metrics</h3>
         <p>Nothing on this page claims a module, benchmark, or install path
-        that doesn't exist. Everything under Roadmap is future work, clearly
-        marked as such.</p>
+        that doesn't exist. Everything under Roadmap beyond the
+        <code>nixllm</code> pointer is future work, clearly marked as
+        such.</p>
       </div>
     </div>
   </div>
@@ -84,24 +88,18 @@
     <h2>The pitch</h2>
     <div class="feature-grid">
       <div class="feature">
-        <h3>One shared LLM server owns all models</h3>
-        <p>llama-swap + llama.cpp behind a LiteLLM front door: one
-        OpenAI-compatible endpoint, many models, loaded on demand and
-        idle-unloaded.</p>
+        <h3>Every app a module</h3>
+        <p>Typed Nix, not copy-pasted YAML: every app a module with neutral
+        defaults, every deployment a rendered, auditable manifest tree, every
+        upgrade a diff.</p>
       </div>
       <div class="feature">
-        <h3>The store IS the registry</h3>
-        <p>Drop a GGUF in the right subdirectory and it is servable by name
-        &mdash; serving mode from the path, context and chat template from
-        GGUF metadata, MoE expert-offload detected, oversized dense models
-        refused. The engine config is generated from the store; there is no
-        hand-maintained model catalog.</p>
-      </div>
-      <div class="feature">
-        <h3>Apps integrate with a key and a model name</h3>
-        <p>A new LLM-consuming app requests no GPU of its own &mdash; it
-        points at the front door. The lane implements behaviors B4/B10/B14/B15
-        of the <a href="https://github.com/julian-corbet/nixgpu-corbet-ch/blob/main/CONTRACT.md">nixgpu contract</a>.</p>
+        <h3>LLM consumers point at nixllm</h3>
+        <p>Apps that need an LLM point at the
+        <a href="https://github.com/julian-corbet/nixllm-corbet-ch">nixllm</a>
+        front door with a key and a model name, and request no GPU of their
+        own &mdash; the serving lane started in this repo and graduated to its
+        own project.</p>
       </div>
     </div>
   </div>
@@ -113,7 +111,7 @@
     <div class="table-scroll">
       <table>
         <tbody>
-          <tr><td><code>llm-serving</code> module (flagship, first)</td><td>The shared broker: llama-swap + llama.cpp, LiteLLM front, store-scan config generator. Runs in production; extraction into this repo in progress.</td></tr>
+          <tr><td>LLM serving (graduated)</td><td>Started here, generalized first, and moved to its own project: <a href="https://github.com/julian-corbet/nixllm-corbet-ch">nixllm</a> &mdash; self-hosted LLM serving where the model store IS the registry. See <a href="https://nixllm.corbet.ch">nixllm.corbet.ch</a>.</td></tr>
           <tr><td>Image generation module</td><td>Generalized from the originating production cluster. Planned, not started.</td></tr>
           <tr><td>TTS module</td><td>Generalized from the originating production cluster. Planned, not started.</td></tr>
           <tr><td>Further tenants</td><td>Additional app modules follow as they are generalized. Planned.</td></tr>
