@@ -1,0 +1,31 @@
+/* nixapps theme — overrides only the accent of the foss v1 base.
+   Retints the central design system accent to violet, distinct from the
+   other project-family pages.
+
+   Contrast checked against WCAG AA (4.5:1) for both directions:
+     dark:  #a78bfa accent text on #0b1120 bg          -> ~7.0:1
+     dark:  #0b1120 accent-text on #a78bfa button bg   -> ~7.0:1
+     light: #6d28d9 accent text on #ffffff bg          -> ~7.1:1
+     light: #ffffff accent-text on #6d28d9 button bg   -> ~7.1:1
+*/
+
+:root {
+  /* Dark mode (and default) accent - violet. */
+  --accent: #a78bfa;
+  --accent-hover: #c4b5fd;
+  --accent-dim: rgba(167, 139, 250, 0.12);
+  --accent-glow: rgba(167, 139, 250, 0.08);
+  --accent-text: #0b1120;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Deeper violet for light mode - keeps text-on-white contrast at
+       WCAG AA (#6d28d9 on #ffffff ~= 7.1:1). */
+    --accent: #6d28d9;
+    --accent-hover: #5b21b6;
+    --accent-dim: rgba(109, 40, 217, 0.08);
+    --accent-glow: rgba(109, 40, 217, 0.06);
+    --accent-text: #ffffff;
+  }
+}
