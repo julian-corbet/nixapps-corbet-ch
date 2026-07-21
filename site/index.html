@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <title>nixapps &mdash; self-hosted apps as typed Nix, not copy-pasted YAML</title>
-  <meta name="description" content="A curated library of self-hosted application modules for a nixidy + Argo CD cluster. Flagship: a shared LLM serving lane where the model store IS the registry. Pre-alpha.">
+  <title>nixapps &mdash; a curated library of self-hosted app modules for nixidy + Argo CD</title>
+  <meta name="description" content="A curated library of self-hosted application modules for a nixidy + Argo CD cluster: apps as typed Nix, not copy-pasted YAML. Flagship LLM serving lane extraction in progress. Pre-alpha.">
 
   <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 
   <meta property="og:title" content="nixapps">
-  <meta property="og:description" content="Curated self-hosted application modules for a nixidy + Argo CD cluster.">
+  <meta property="og:description" content="A curated library of self-hosted application modules for a nixidy + Argo CD cluster: apps as typed Nix, not copy-pasted YAML.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://nixapps.corbet.ch">
   <meta name="twitter:card" content="summary">
@@ -26,55 +26,116 @@
     <a href="/" class="nav-brand">nixapps</a>
     <div class="nav-links">
       <a href="https://github.com/julian-corbet/nixapps-corbet-ch">GitHub</a>
-      <a href="#flagship">Flagship</a>
       <a href="#status">Status</a>
+      <a href="#roadmap">Roadmap</a>
     </div>
   </nav>
 
   <div class="hero-content">
     <h1>nixapps</h1>
-    <p class="tagline">Self-hosted apps as typed Nix, not copy-pasted YAML</p>
-    <p class="subtitle">Application modules that render through nixidy and
-    deploy onto an Argo CD cluster: every app a module with neutral defaults,
-    every deployment an auditable manifest tree, every upgrade a diff.</p>
+    <p class="tagline">A curated library of self-hosted application modules for a nixidy + Argo CD cluster</p>
+    <p class="subtitle">Apps as typed Nix, not copy-pasted YAML. The tenant layer of an
+    interoperating project set: application modules that render through
+    <a href="https://github.com/arnarg/nixidy">nixidy</a> and deploy onto the spine
+    shipped by <a href="https://github.com/julian-corbet/nixk3s-corbet-ch">nixk3s</a>.
+    GPU-consuming apps declare the three-line contract from
+    <a href="https://github.com/julian-corbet/nixgpu-corbet-ch">nixgpu</a> and never
+    think about the card again.</p>
+    <div class="cta">
+      <a href="#status" class="btn btn-primary">Read the honest status</a>
+      <a href="https://github.com/julian-corbet/nixapps-corbet-ch" class="btn btn-secondary">View on GitHub</a>
+    </div>
   </div>
 </header>
 
 <main>
-  <section id="flagship">
-    <h2>Flagship: the LLM serving lane</h2>
-    <ul>
-      <li><strong>One shared LLM server owns all models.</strong> llama-swap +
-        llama.cpp behind a LiteLLM front door — one OpenAI-compatible
-        endpoint, many models, loaded on demand, idle-unloaded.</li>
-      <li><strong>The store IS the registry.</strong> Drop a GGUF in the right
-        subdirectory and it is servable by name — mode from the path, context
-        and chat template from metadata, MoE offload detected, oversized dense
-        models refused. No hand-maintained catalog, ever.</li>
-      <li><strong>Apps integrate with a key and a model name.</strong> A new
-        LLM-consuming app requests no GPU of its own.</li>
-    </ul>
-  </section>
 
-  <section id="status">
-    <h2>Status</h2>
-    <p><strong>Pre-alpha.</strong> Every listed app runs in production on a
-    single shared-GPU cluster; the generalized modules have not been extracted
-    yet.</p>
-  </section>
+<section id="status" class="how-it-works">
+  <div class="container">
+    <h2>Status: pre-alpha, extraction not started</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">!</div>
+        <h3>Nothing extracted yet</h3>
+        <p>Every app described below runs in production on a single shared-GPU
+        cluster. This repo will carry their generalized modules, but no module
+        has landed here yet &mdash; modules are landing now, not available.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">!</div>
+        <h3>The mechanism is real and production-proven</h3>
+        <p>The flagship LLM serving lane &mdash; one shared server, the model
+        store as its own registry &mdash; runs today in production. What's
+        pending is packaging it as a documented, neutral-default nixidy module.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">!</div>
+        <h3>No invented modules or metrics</h3>
+        <p>Nothing on this page claims a module, benchmark, or install path
+        that doesn't exist. Everything under Roadmap is future work, clearly
+        marked as such.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
-  <section id="family">
-    <h2>Interoperating set</h2>
-    <p>nixapps deploys onto the <a href="https://nixk3s.corbet.ch">nixk3s</a>
-    spine; GPU apps declare the three-line contract from
-    <a href="https://nixgpu.corbet.ch">nixgpu</a> and never think about the
-    card again.</p>
-  </section>
+<section class="features">
+  <div class="container">
+    <h2>The pitch</h2>
+    <div class="feature-grid">
+      <div class="feature">
+        <h3>One shared LLM server owns all models</h3>
+        <p>llama-swap + llama.cpp behind a LiteLLM front door: one
+        OpenAI-compatible endpoint, many models, loaded on demand and
+        idle-unloaded.</p>
+      </div>
+      <div class="feature">
+        <h3>The store IS the registry</h3>
+        <p>Drop a GGUF in the right subdirectory and it is servable by name
+        &mdash; serving mode from the path, context and chat template from
+        GGUF metadata, MoE expert-offload detected, oversized dense models
+        refused. The engine config is generated from the store; there is no
+        hand-maintained model catalog.</p>
+      </div>
+      <div class="feature">
+        <h3>Apps integrate with a key and a model name</h3>
+        <p>A new LLM-consuming app requests no GPU of its own &mdash; it
+        points at the front door. The lane implements behaviors B4/B10/B14/B15
+        of the <a href="https://github.com/julian-corbet/nixgpu-corbet-ch/blob/main/CONTRACT.md">nixgpu contract</a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="roadmap" class="commands">
+  <div class="container">
+    <h2>Roadmap</h2>
+    <div class="table-scroll">
+      <table>
+        <tbody>
+          <tr><td><code>llm-serving</code> module (flagship, first)</td><td>The shared broker: llama-swap + llama.cpp, LiteLLM front, store-scan config generator. Runs in production; extraction into this repo in progress.</td></tr>
+          <tr><td>Image generation module</td><td>Generalized from the originating production cluster. Planned, not started.</td></tr>
+          <tr><td>TTS module</td><td>Generalized from the originating production cluster. Planned, not started.</td></tr>
+          <tr><td>Further tenants</td><td>Additional app modules follow as they are generalized. Planned.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
 </main>
 
 <footer>
-  <p><a href="https://github.com/julian-corbet/nixapps-corbet-ch">GitHub</a>
-  &middot; MIT License &copy; 2026 Julian Corbet</p>
+  <div class="container">
+    <div class="footer-links">
+      <a href="https://github.com/julian-corbet/nixapps-corbet-ch">Source</a>
+      <a href="https://github.com/julian-corbet/nixapps-corbet-ch/issues">Issues</a>
+    </div>
+    <p>
+      <a href="https://github.com/julian-corbet/nixapps-corbet-ch/blob/main/LICENSE">MIT</a> &middot;
+      <a href="https://github.com/julian-corbet">Julian Corbet</a>
+    </p>
+  </div>
 </footer>
 
 </body>
