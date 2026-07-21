@@ -43,6 +43,9 @@ been extracted yet.
   sharing substrate GPU apps declare their contract against.
 - [nixllm](https://github.com/julian-corbet/nixllm-corbet-ch) — the shared
   LLM serving lane (graduated from this repo).
+- [nixvibe](https://github.com/julian-corbet/nixvibe-corbet-ch) — a coding
+  agent in a real browser terminal; substantial enough to graduate straight
+  to its own repo rather than landing here.
 
 ## License
 
