@@ -31,7 +31,7 @@
 # trusting it there.
 { lib, config, ... }:
 let
-  cfg = config.nixapps.comfyui;
+  cfg = config.nixapps.advanced.comfyui;
 
   # Sablier's OWN discovery label key — fixed by Sablier itself, not a convention of this project
   # (unlike the nixgpu managed/engine label keys below, which ARE this project family's own
@@ -46,7 +46,7 @@ let
   preStartHookDir = builtins.dirOf cfg.preStartHookPath;
 in
 {
-  options.nixapps.comfyui = {
+  options.nixapps.advanced.comfyui = {
     enable = lib.mkEnableOption "the ComfyUI image-generation tenant (a direct GPU consumer under the nixgpu contract)";
 
     namespace = lib.mkOption {

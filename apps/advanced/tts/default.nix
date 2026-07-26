@@ -71,7 +71,7 @@
 # before trusting it there.
 { lib, config, ... }:
 let
-  cfg = config.nixapps.tts;
+  cfg = config.nixapps.advanced.tts;
 
   # Fixed by the kokoro-fastapi image's own directory convention (where it scans for voice models
   # beyond the stock pack baked into the image) — not an option. Exposing this as a configurable
@@ -226,7 +226,7 @@ let
   };
 in
 {
-  options.nixapps.tts = {
+  options.nixapps.advanced.tts = {
     enable = lib.mkEnableOption "the tts voice tier (Kokoro CPU narration + optional Chatterbox GPU voice cloning)";
 
     namespace = lib.mkOption {
@@ -268,7 +268,7 @@ in
       # genuinely different from chatterbox and defaults ON. It is CPU-only, needs no GPU, no
       # private image, and no pull secret — the only thing it requires is modelStoreHostPath, which
       # has no default for the same reason every hostPath option in this family doesn't (every
-      # deployment's storage layout differs). Turning `nixapps.tts.enable` on without an opinion on
+      # deployment's storage layout differs). Turning `nixapps.advanced.tts.enable` on without an opinion on
       # kokoro specifically should give you the tenant that costs nothing extra to run.
       enable = lib.mkOption {
         type = lib.types.bool;
@@ -378,16 +378,16 @@ in
 
       image = lib.mkOption {
         type = lib.types.str;
-        default = "ghcr.io/julian-corbet/chatterbox-tts-rocm:latest";
         description = ''
-          Chatterbox image. Upstream's own Dockerfile (devnen/Chatterbox-TTS-Server) hardcodes
-          CUDA; this default points at a ROCm-patched rebuild instead (built by the sibling
-          chatterbox-tts-corbet-ch repo). `:latest` here is only a bootstrap-friendly starting
-          point — pin a digest once you've validated a build, the same discipline `kokoro.image`
-          already follows above: a moving tag is a real production incident waiting to happen, not
-          a hypothetical one. Point this at your own image if you use a different Chatterbox
-          distribution or backend — in which case also revisit `gpu.hsaOverrideGfxVersion` and the
-          ROCm-specific `securityContext` this module sets, which may not apply.
+          Chatterbox image. No default, deliberately — there is no image this recipe can honestly
+          pick for you. Upstream's own Dockerfile (devnen/Chatterbox-TTS-Server) hardcodes CUDA, so
+          running this on anything else means a rebuild, and which rebuild is yours: a maintainer's
+          personal registry namespace is not a portable default (CONTRACT.md R2), and a floating tag
+          would be worse (R10). Pin a digest of a build you have validated.
+
+          Whatever you point this at, revisit `gpu.runtimeEnv`-style hardware overrides and the
+          ROCm-specific `securityContext` this module sets — both assume a ROCm build and may not
+          apply to yours.
         '';
       };
 

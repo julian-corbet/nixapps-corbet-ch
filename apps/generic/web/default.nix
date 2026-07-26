@@ -1,4 +1,4 @@
-# scale-to-zero-web — the OTHER platform opinion in this project family besides GPU sharing (see
+# generic/web — a recipe for web apps too ordinary to deserve their own file. The OTHER platform opinion in this project family besides GPU sharing (see
 # nixgpu): a generic tenant module for CPU-only web apps that rest at zero replicas between uses and
 # wake on the first request via the KEDA HTTP add-on. `apps` is a LIST, not a single-tenant option
 # tree like comfyui/tts — deliberately, because the shape underneath is uniform enough to cover many
@@ -48,7 +48,7 @@
 # directory or a client secret. Render-checked, not yet re-verified live in a fresh cluster.
 { lib, config, ... }:
 let
-  cfg = config.nixapps.scaleToZeroWeb;
+  cfg = config.nixapps.generic.web;
 
   enabledApps = builtins.filter (app: app.enable) cfg.apps;
 
@@ -188,12 +188,12 @@ let
           {
             assertion = false;
             message = ''
-              nixapps.scaleToZeroWeb.apps: "${app.name}" sets dataHostPath but not dataMountPath — there is no universal default (every app's own expected data directory differs); set dataMountPath to the in-pod path this app actually expects its data at.'';
+              nixapps.generic.web.apps: "${app.name}" sets dataHostPath but not dataMountPath — there is no universal default (every app's own expected data directory differs); set dataMountPath to the in-pod path this app actually expects its data at.'';
           }
         ++ lib.optional (app.createNamespace && lib.length (createNamespaceAnchors app) > 1) {
           assertion = false;
           message = ''
-            nixapps.scaleToZeroWeb: namespace "${effectiveNamespace app}" has createNamespace = true on ${toString (lib.length (createNamespaceAnchors app))} apps (${lib.concatMapStringsSep ", " (a: a.name) (createNamespaceAnchors app)}) — exactly one app sharing a namespace should anchor it; set createNamespace = false on all but one.'';
+            nixapps.generic.web: namespace "${effectiveNamespace app}" has createNamespace = true on ${toString (lib.length (createNamespaceAnchors app))} apps (${lib.concatMapStringsSep ", " (a: a.name) (createNamespaceAnchors app)}) — exactly one app sharing a namespace should anchor it; set createNamespace = false on all but one.'';
         };
     };
 
@@ -226,7 +226,7 @@ let
         default = null;
         description = ''
           Namespace this app's Deployment/Service/HTTPScaledObject run in. `null` (the default)
-          falls back to the module-level `nixapps.scaleToZeroWeb.namespace`. Override per app only
+          falls back to the module-level `nixapps.generic.web.namespace`. Override per app only
           when this particular tenant needs a namespace of its own rather than the shared default.
         '';
       };
@@ -253,7 +253,7 @@ let
         default = null;
         description = ''
           nixidy AppProject this app's application is filed under. `null` (the default) falls back
-          to the module-level `nixapps.scaleToZeroWeb.project`. Override per app only if one
+          to the module-level `nixapps.generic.web.project`. Override per app only if one
           particular tenant needs a different Argo CD AppProject tier than the rest.
         '';
       };
@@ -540,7 +540,7 @@ let
   });
 in
 {
-  options.nixapps.scaleToZeroWeb = {
+  options.nixapps.generic.web = {
     enable = lib.mkEnableOption "the scale-to-zero web-app tenant class (KEDA HTTP add-on fronted)";
 
     namespace = lib.mkOption {

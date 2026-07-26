@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <title>nixapps &mdash; a curated library of self-hosted app modules for nixidy + Argo CD</title>
-  <meta name="description" content="A curated library of self-hosted application modules for a nixidy + Argo CD cluster: apps as typed Nix, not copy-pasted YAML. The LLM serving lane graduated to nixllm; first tenants (image generation, TTS) pending. Pre-alpha.">
+  <meta name="description" content="A curated library of self-hosted application modules for a nixidy + Argo CD cluster: apps as typed Nix, not copy-pasted YAML. The LLM serving lane graduated to nixllm; three tenants (image generation, TTS, generic web) have landed and evaluate, none yet adopted into a live cluster. Pre-alpha.">
 
   <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
@@ -78,15 +78,26 @@
 
 <section id="status" class="how-it-works">
   <div class="container">
-    <h2>Status: pre-alpha, first tenants pending</h2>
+    <h2>Status: pre-alpha, three tenants landed, none live yet</h2>
     <div class="steps">
       <div class="step">
         <div class="step-num">!</div>
-        <h3>Nothing landed here yet</h3>
-        <p>Every app planned for this repo runs in production on a single
-        shared-GPU cluster, but the generalized modules for this repo's own
-        tenants (image generation, TTS, &hellip;) have not been extracted
-        yet.</p>
+        <h3>Three modules landed, evaluated, not yet adopted</h3>
+        <p>Image generation (<code>comfyui</code>), text-to-speech
+        (<code>tts</code>) and a generic scale-to-zero web tenant have been
+        generalized from a single production shared-GPU cluster and evaluate
+        on their own. None of the three has been adopted back into a live
+        cluster yet &mdash; treat them as evaluated, not live-verified.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">!</div>
+        <h3>Reorganization onto the recipe contract in progress</h3>
+        <p>The rules for what a recipe is and what this repository will and
+        will not contain are fixed in
+        <a href="https://github.com/julian-corbet/nixapps-corbet-ch/blob/main/CONTRACT.md">CONTRACT.md</a>.
+        Modules are being moved onto that contract's layout; a render check
+        in CI currently covers the generic web tenant against a real minimal
+        example, with the other two still to be wired in.</p>
       </div>
       <div class="step">
         <div class="step-num">!</div>
@@ -96,14 +107,6 @@
         <a href="https://nixllm.corbet.ch">nixllm</a>. LLM-consuming apps
         still integrate the same way &mdash; a key and a model name, no GPU of
         their own.</p>
-      </div>
-      <div class="step">
-        <div class="step-num">!</div>
-        <h3>No invented modules or metrics</h3>
-        <p>Nothing on this page claims a module, benchmark, or install path
-        that doesn't exist. Everything under Roadmap beyond the
-        <code>nixllm</code> pointer is future work, clearly marked as
-        such.</p>
       </div>
     </div>
   </div>

@@ -1,4 +1,4 @@
-# scale-to-zero-web
+# generic/web — the ordinary-web-app escape hatch
 
 The **other platform opinion** in this project family besides GPU sharing (see
 [nixgpu](https://github.com/julian-corbet/nixgpu-corbet-ch)): a generic tenant
@@ -110,12 +110,12 @@ Top-level:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `nixapps.scaleToZeroWeb.enable` | bool | `false` | Enable the module. |
-| `nixapps.scaleToZeroWeb.namespace` | str | `"apps"` | Default namespace for apps that don't set their own `namespace`. |
-| `nixapps.scaleToZeroWeb.project` | str | `"apps"` | Default nixidy AppProject for apps that don't set their own `project` — the plain CPU-only tier, unlike comfyui/tts's GPU tier. |
-| `nixapps.scaleToZeroWeb.apps` | listOf submodule | `[]` | The tenants to render, one Argo application each. See below. |
+| `nixapps.generic.web.enable` | bool | `false` | Enable the module. |
+| `nixapps.generic.web.namespace` | str | `"apps"` | Default namespace for apps that don't set their own `namespace`. |
+| `nixapps.generic.web.project` | str | `"apps"` | Default nixidy AppProject for apps that don't set their own `project` — the plain CPU-only tier, unlike comfyui/tts's GPU tier. |
+| `nixapps.generic.web.apps` | listOf submodule | `[]` | The tenants to render, one Argo application each. See below. |
 
-Per-app (`nixapps.scaleToZeroWeb.apps.*`) — `name`, `image`, `port`, `healthPath`, `host` are the only **required** fields:
+Per-app (`nixapps.generic.web.apps.*`) — `name`, `image`, `port`, `healthPath`, `host` are the only **required** fields:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -140,7 +140,7 @@ Per-app (`nixapps.scaleToZeroWeb.apps.*`) — `name`, `image`, `port`, `healthPa
 | `clusterIP` | nullOr str | `null` | Optional fixed ClusterIP; leave `null` unless your routing needs a stable, pre-known VIP. |
 | `host` | str | **required** | Public FQDN the HTTPScaledObject wakes this app for. One host per tenant. |
 
-Probes (`nixapps.scaleToZeroWeb.apps.*.probes.*`):
+Probes (`nixapps.generic.web.apps.*.probes.*`):
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -163,11 +163,11 @@ generalized from — as the first entry:
 
 ```nix
 {
-  imports = [ inputs.nixapps.nixidyModules.scaleToZeroWeb ];
+  imports = [ inputs.nixapps.nixidyModules.generic.web ];
 
-  nixapps.scaleToZeroWeb.enable = true;
+  nixapps.generic.web.enable = true;
 
-  nixapps.scaleToZeroWeb.apps = [
+  nixapps.generic.web.apps = [
     {
       name = "quickchart";
       image = "ianw/quickchart";
@@ -182,7 +182,7 @@ generalized from — as the first entry:
       name = "my-snippet-manager";
       namespace = "apps"; # same as quickchart's effective namespace
       createNamespace = false; # quickchart already anchors this namespace — see the anchor lesson
-      image = "ghcr.io/example/snippet-manager:latest";
+      image = "ghcr.io/example/snippet-manager:2.4.1"; # pinned — CONTRACT.md R10
       port = 5000;
       healthPath = "/";
       host = "snippets.example.com";
