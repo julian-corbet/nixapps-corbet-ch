@@ -17,7 +17,11 @@
       # serving lane graduated to its own sibling project, nixllm. GPU apps
       # declare the nixgpu contract (priority class, Recreate strategy,
       # device token) and nothing else.
-      nixidyModules = { };
+      nixidyModules = {
+        comfyui = ./apps/comfyui;
+        tts = ./apps/tts;
+        scale-to-zero-web = ./apps/scale-to-zero-web;
+      };
 
       lib = { };
 
