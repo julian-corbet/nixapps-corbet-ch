@@ -138,6 +138,28 @@ in
       '';
     };
 
+    arbiterLabels = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      example = {
+        "example.com/gpu-managed" = "true";
+        "example.com/gpu-engine" = "compute";
+      };
+      description = ''
+        Pod labels by which your GPU arbiter discovers this workload.
+
+        An arbiter that evicts by priority has to enumerate the pods holding the
+        card, and it does that with a label selector — so a pod carrying none of
+        its labels is invisible to it. Declaring a priority class without these is
+        the common half-configuration: the scheduler knows the ordering, and the
+        thing that acts on it never sees you.
+
+        Empty by default, because the keys belong to the arbiter and not to this
+        app: only your cluster knows what domain it namespaces its labels under.
+        Empty is correct when nothing arbitrates the card.
+      '';
+    };
+
     modelsPath = lib.mkOption {
       type = lib.types.str;
       description = ''
@@ -214,7 +236,10 @@ in
           strategy.type = "Recreate";
           selector.matchLabels.app = name;
           template = {
-            metadata.labels.app = name;
+            # The selector above stays minimal on purpose — it is immutable after
+            # creation, so the arbiter's labels must not be part of it. They go on
+            # the pod only, where they can be changed later.
+            metadata.labels = { app = name; } // cfg.arbiterLabels;
             spec = {
               # Half the arbiter contract: the order in which holders yield.
               # The other half is the device request on the container below.

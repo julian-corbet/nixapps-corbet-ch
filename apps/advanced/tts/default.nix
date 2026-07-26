@@ -165,6 +165,27 @@ in
         '';
       };
 
+      arbiterLabels = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = { };
+        example = {
+          "example.com/gpu-managed" = "true";
+          "example.com/gpu-engine" = "compute";
+        };
+        description = ''
+          Pod labels by which your GPU arbiter discovers this workload.
+
+          An arbiter that evicts by priority enumerates the pods holding the card
+          with a label selector, so a pod carrying none of its labels is invisible
+          to it — and a priority class without these is the common
+          half-configuration: the scheduler knows the ordering, and the thing that
+          acts on it never sees you.
+
+          Empty by default, because the keys belong to the arbiter and not to this
+          app. Empty is correct when nothing arbitrates the card.
+        '';
+      };
+
       modelsCachePath = lib.mkOption {
         type = lib.types.str;
         description = ''
@@ -256,7 +277,10 @@ in
               strategy.type = "Recreate";
               selector.matchLabels.app = "chatterbox";
               template = {
-                metadata.labels.app = "chatterbox";
+                # The selector stays minimal on purpose — it is immutable after
+                # creation, so the arbiter's labels go on the pod only, where they
+                # can still be changed.
+                metadata.labels = { app = "chatterbox"; } // cfg.chatterbox.arbiterLabels;
                 spec = {
                   imagePullSecrets = lib.optional (cfg.chatterbox.imagePullSecretName != "") {
                     name = cfg.chatterbox.imagePullSecretName;

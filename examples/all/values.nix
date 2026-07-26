@@ -21,6 +21,15 @@
 
   nixapps.advanced.comfyui = {
     enable = true;
+    # The arbiter contract, set here so the check renders it. An arbiter finds the
+    # pods holding the card by label selector, so a workload carrying none of its
+    # labels is invisible to it — and the keys belong to the arbiter, not the app.
+    arbiterLabels = {
+      "example.com/gpu-managed" = "true";
+      "example.com/gpu-engine" = "compute";
+    };
+    deviceResource = "example.com/gpu";
+    priorityClassName = "example-gpu-interactive";
     imagesPath = "/var/lib/example/comfyui/images";
     modelsPath = "/var/lib/example/comfyui/models";
     namespace = "comfyui";
@@ -34,6 +43,12 @@
     # a check that renders no workload proves nothing about the workload.
     kokoro.enable = true;
     chatterbox.enable = true;
+    chatterbox.arbiterLabels = {
+      "example.com/gpu-managed" = "true";
+      "example.com/gpu-engine" = "compute";
+    };
+    chatterbox.deviceResource = "example.com/gpu";
+    chatterbox.priorityClassName = "example-gpu-besteffort";
     chatterbox.image = "registry.example.com/example/tts:1.0.0";
     chatterbox.modelsCachePath = "/var/lib/example/tts/models-cache";
     chatterbox.referenceAudioPath = "/var/lib/example/tts/reference-audio";
