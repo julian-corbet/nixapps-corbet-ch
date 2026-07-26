@@ -576,14 +576,18 @@ in
 
         hsaOverrideGfxVersion = lib.mkOption {
           type = lib.types.str;
-          default = "10.3.0";
+          default = "";
           description = ''
             `HSA_OVERRIDE_GFX_VERSION` passed to the container. ROCm ships official support for a
             fixed list of GPU architectures; this override tells ROCm to treat the card as the
-            nearest supported architecture. This option DEFAULTS to "10.3.0" — the value an RDNA2
-            consumer card needs — IT IS AN EXAMPLE, not a universal default. Find your own card's
-            correct value from ROCm's supported-GPU list, or set this to "" (empty string) to omit
-            the env var entirely on a card ROCm already supports natively.
+            nearest supported architecture.
+
+            DEFAULTS TO "" — the env var is omitted entirely, which is correct for any card ROCm
+            supports natively. It is deliberately NOT defaulted to a real architecture value: a
+            concrete default is only ever right for the one card its author happened to own, and
+            silently applying someone else's GFX override to your card produces confusing ROCm
+            misbehaviour rather than an honest error. Look your own card up in ROCm's supported-GPU
+            list and set it explicitly if it needs one — e.g. an RDNA2 consumer card wants "10.3.0".
           '';
         };
       };
