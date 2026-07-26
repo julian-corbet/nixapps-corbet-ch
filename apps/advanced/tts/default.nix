@@ -1,622 +1,368 @@
-# tts — the second nixapps tenant (see apps/README.md), and a deliberately DIFFERENT shape from
-# comfyui: not one Deployment but TWO, independently enabled, sharing one namespace/Argo
-# application —
+# nixapps.advanced.tts — Kokoro and Chatterbox voice synthesis services.
 #
-#   - kokoro: stock narrator-voice text-to-speech. CPU-only, always schedulable, no GPU option
-#     surface at all (not even an unused one) — small enough to run in real time on CPU per
-#     upstream's own benchmarks, so it never needs the shared card.
-#   - chatterbox: voice-CLONING text-to-speech (a short reference clip in, a cloned voice out).
-#     GPU-backed, and OPTIONAL — it carries the identical three-line nixgpu contract as comfyui
-#     (priorityClassName, `strategy: Recreate`, a device-resource token) and never thinks about
-#     the card again. See nixgpu CONTRACT.md for what that contract guarantees it in return
-#     (B1/B2/B8: co-residence when it fits, priority-ordered yield when it doesn't, decided by
-#     live measured VRAM, never a card reset).
+# What this recipe knows about tts:
 #
-# GPU DEVICE INFRA (device tokens, priority ladder, pressure watcher) is a separate concern,
-# shipped by the sibling nixgpu project — chatterbox only *consumes* that contract, it does not
-# provide it.
+#   - Kokoro is a lightweight text-to-speech engine with stock narrator voices,
+#     CPU-only (no GPU needed). It is efficient enough (82M parameters) that it
+#     runs comfortably on shared CPU. It exposes /health for readiness checks.
+#   - Chatterbox is a voice-cloning engine: it takes 5-10 seconds of reference
+#     audio and generates new speech in that speaker's voice. It is GPU-backed and
+#     shares the GPU pool with other advanced workloads (like ComfyUI). It has no
+#     dedicated /health path; the web UI at / is live once models are loaded.
+#   - Neither is a public-facing service hit cold from a browser; both are
+#     backend engines something else drives. That makes them good candidates for
+#     resting at zero replicas between uses, but this recipe does not decide that
+#     — scale and wake behaviour belong to the site (CONTRACT.md R8), so no
+#     replica count is rendered at all and whatever owns scaling keeps ownership.
+#   - Both require persistent model storage. Kokoro models are distributed by the
+#     upstream image; Chatterbox stores Hugging Face caches, voice reference
+#     samples, and voice clones on the host filesystem.
+#   - Chatterbox requires image pull credentials if the image is private. The image
+#     may be a private fork (e.g., a ROCm variant) that only you can access.
 #
-# SCALE-TO-ZERO: A THIRD PATTERN, NOT A VARIANT OF THE OTHER TWO. comfyui is Sablier-fronted (a
-# waiting page in front of a public URL); a KEDA HTTPScaledObject front is the other common shape
-# elsewhere in this project family. Neither applies here. Both Deployments in this module simply
-# default to `replicas: 0` and are scaled 1<->0 by an EXTERNAL operator or workflow script issuing
-# a plain `kubectl scale` — no interceptor, no waiting page, no front of any kind. That is a
-# deliberate design choice, not a missing feature: these are backend tools an internal pipeline
-# calls into (generate narration, clone a voice), never a public URL a browser lands on cold. With
-# no anonymous browser caller in the loop, there is no one to show a "warming up" page to — the
-# caller IS the thing that already knows to wait for the pod to go Ready. If you came here looking
-# for the wiring that scales these Deployments up and down, it does not belong in this module at
-# all; that is the operator/workflow's job, not this tenant's.
-#
-# CRITICAL GITOPS PREREQUISITE — read before wiring any operator script to this module: unlike a
-# Sablier-fronted tenant (where `replicas` is omitted from the manifest entirely so the front can
-# own it out-of-band, free of any GitOps opinion), `replicas` HERE is an ordinary, git-tracked
-# field defaulting to 0. An external `kubectl scale --replicas=1` is therefore live drift against
-# the declared desired state the instant it runs. If your GitOps controller reconciles this
-# Application with self-healing enabled and nothing tells it to ignore `spec.replicas` on these
-# Deployments (a `spec.ignoreDifferences` rule for `apps/Deployment` — cluster-wide, or scoped to
-# this one Application — or simply not self-healing this Application), the very next reconcile
-# silently scales the pod straight back to 0. This does not look like a GitOps error: there is no
-# crash, no sync failure, no obvious signal anywhere in this module's own manifests. It looks like
-# "the operator script scaled it up, and a few minutes later it was back down for no reason" —
-# easy to misdiagnose as a bug in the scale script itself when the real cause is GitOps quietly
-# winning a fight the scale script never knew it was in. Get the ignore-diff (or sync-mode) story
-# straight on your own cluster BEFORE pointing any automation at `kubectl scale` on these
-# Deployments.
-#
-# HEALTH-PROBE LESSON (chatterbox, generalizes past this one server): the reference chatterbox
-# image ships with NO dedicated health endpoint. Its root path ("/") serves the web UI, and that
-# UI only starts responding once the model has actually finished loading — so this module probes
-# "/", not an assumed "/health" (confirmed against the real server: "/health" 404s the whole time,
-# "/" 200s only once truly ready). Guessing wrong here fails in two different, equally unpleasant
-# directions: assume a health path that always 404s and the pod never goes Ready at all; assume
-# one that 200s unconditionally (a liveness-only stub, a static file, a proxy default page) and the
-# pod goes "Ready" the instant the process starts, long before the model is actually usable, and
-# every request that lands during the gap fails against a technically-Ready pod. Check what your
-# own image really serves, at rest, before trusting a path name alone.
-#
-# STORAGE LESSON (chatterbox's three required host paths, `hfCacheHostPath` / `voicesHostPath` /
-# `referenceAudioHostPath`): these are not interchangeable and must not be merged into one mount
-# just because the container happens to read all three. `hfCacheHostPath` is a DERIVED, disposable
-# download cache — wipe it and the container simply re-downloads on next start. The other two hold
-# irreplaceable USER DATA: saved voice presets and the reference audio clips fed to a cloning
-# request. Treating the cache path with the same caution you'd give the other two costs nothing;
-# treating the other two with the "it's just a cache, it'll come back" carelessness that's fine for
-# the first one loses real recordings that do not come back.
-#
-# Status: extracted from a production system where this exact shape runs live — two independently
-# scaled-to-zero Deployments, one CPU-only and always on standby, one GPU-backed and driven by the
-# same external workflow tooling that also drives comfyui and the shared LLM broker on the same
-# card. This generalized module has not yet been re-verified live in a fresh cluster — re-verify
-# before trusting it there.
+# This recipe lets you enable/disable each service independently. You can run
+# just Kokoro (CPU-only, lowest overhead), just Chatterbox (GPU, full voice
+# cloning), or both.
 { lib, config, ... }:
 let
   cfg = config.nixapps.advanced.tts;
-
-  # Fixed by the kokoro-fastapi image's own directory convention (where it scans for voice models
-  # beyond the stock pack baked into the image) — not an option. Exposing this as a configurable
-  # knob would only invite someone to "fix" it into a value the image silently never reads.
-  kokoroModelMountPath = "/app/api/src/models/extra";
-
-  # Same reasoning for chatterbox's three mount points: fixed by devnen/Chatterbox-TTS-Server's own
-  # container layout (which the ROCm rebuild `chatterbox.image` defaults to does not change), not a
-  # convention of this module.
-  chatterboxHfCacheMountPath = "/app/hf_cache";
-  chatterboxVoicesMountPath = "/app/voices";
-  chatterboxReferenceAudioMountPath = "/app/reference_audio";
-
-  kokoroDeployment = {
-    metadata.labels.app = "kokoro";
-    spec = {
-      replicas = cfg.kokoro.replicas;
-      # strategy: Recreate even though this Deployment is CPU-only and holds no GPU slot to
-      # protect. The reason is different from chatterbox's (below): this tenant's replica count is
-      # toggled externally (see the module-level comment on scale-to-zero above), and Recreate
-      # keeps "at most one kokoro pod exists at any moment" true regardless of whether the pod
-      # change came from a version rollout or from the external 0<->1 toggle — a surging
-      # RollingUpdate pod would otherwise transiently coexist with whichever pod the external
-      # toggle script is watching for readiness, which is exactly the kind of ambiguity an
-      # externally-driven scale-to-zero pattern should not have to reason about.
-      strategy.type = "Recreate";
-      selector.matchLabels.app = "kokoro";
-      template = {
-        metadata.labels.app = "kokoro";
-        spec.containers = [{
-          name = "kokoro";
-          image = cfg.kokoro.image;
-          ports = [{ containerPort = cfg.kokoro.port; }];
-          readinessProbe = {
-            httpGet = { path = cfg.kokoro.readinessProbe.path; port = cfg.kokoro.port; };
-            periodSeconds = cfg.kokoro.readinessProbe.periodSeconds;
-            failureThreshold = cfg.kokoro.readinessProbe.failureThreshold;
-          };
-          resources = {
-            requests = {
-              cpu = cfg.kokoro.resources.requests.cpu;
-              memory = cfg.kokoro.resources.requests.memory;
-            };
-            limits.memory = cfg.kokoro.resources.limits.memory;
-          };
-          volumeMounts = [{ name = "models"; mountPath = kokoroModelMountPath; }];
-        }];
-        spec.volumes = [{
-          name = "models";
-          hostPath = { path = cfg.kokoro.modelStoreHostPath; type = "Directory"; };
-        }];
-      };
-    };
-  };
-
-  kokoroService.spec = {
-    selector.app = "kokoro";
-    ports = [{ port = cfg.kokoro.port; targetPort = cfg.kokoro.port; }];
-  };
-
-  chatterboxDeployment = {
-    metadata.labels.app = "chatterbox";
-    spec = {
-      replicas = cfg.chatterbox.replicas;
-      # strategy: Recreate — this pod holds the ONE compute device-resource slot
-      # (gpu.deviceResourceCount, default 1); a surging new pod couldn't schedule anyway while the
-      # old one still holds it, so Recreate tears the old pod down first rather than leaving a new
-      # one stuck Pending. Same rationale as comfyui and nixllm's broker.
-      strategy.type = "Recreate";
-      selector.matchLabels.app = "chatterbox";
-      template = {
-        metadata.labels = {
-          app = "chatterbox";
-          "${cfg.chatterbox.gpu.managedLabelKey}" = "true";
-          "${cfg.chatterbox.gpu.engineLabelKey}" = cfg.chatterbox.gpu.engineLabelValue;
-        };
-        spec = {
-          nodeSelector = cfg.chatterbox.gpu.nodeSelector;
-          priorityClassName = cfg.chatterbox.gpu.priorityClassName;
-          imagePullSecrets = lib.optional (cfg.chatterbox.existingImagePullSecretName != null)
-            { name = cfg.chatterbox.existingImagePullSecretName; };
-          containers = [{
-            name = "chatterbox";
-            image = cfg.chatterbox.image;
-            env = lib.optional (cfg.chatterbox.gpu.hsaOverrideGfxVersion != "")
-              { name = "HSA_OVERRIDE_GFX_VERSION"; value = cfg.chatterbox.gpu.hsaOverrideGfxVersion; };
-            ports = [{ containerPort = cfg.chatterbox.port; }];
-            # See the module-level HEALTH-PROBE LESSON comment above for why this probes "/" and
-            # why failureThreshold defaults so high: a cold model load with no page-cache warmth
-            # (the common case right after this Deployment is scaled up from 0) can take several
-            # minutes, and the whole point of scaling to zero between uses is that most starts ARE
-            # that cold case, not the exception.
-            readinessProbe = {
-              httpGet = { path = cfg.chatterbox.readinessProbe.path; port = cfg.chatterbox.port; };
-              periodSeconds = cfg.chatterbox.readinessProbe.periodSeconds;
-              failureThreshold = cfg.chatterbox.readinessProbe.failureThreshold;
-            };
-            resources = {
-              limits = {
-                "${cfg.chatterbox.gpu.deviceResourceName}" = cfg.chatterbox.gpu.deviceResourceCount;
-                memory = cfg.chatterbox.resources.limits.memory;
-              };
-              requests.memory = cfg.chatterbox.resources.requests.memory;
-            };
-            # Carried as-is from the originating production deployment (undocumented there beyond
-            # "required" — this generalized module has not independently re-derived why, only
-            # preserved it): without SYS_PTRACE + an unconfined seccomp profile, this ROCm image's
-            # process fails to initialize the GPU correctly. Same note as comfyui and nixllm's
-            # broker — evidently a recurring trait of ROCm containers on this family of cards, not
-            # specific to any one of them.
-            securityContext = {
-              capabilities.add = [ "SYS_PTRACE" ];
-              seccompProfile.type = "Unconfined";
-            };
-            volumeMounts = [
-              { name = "hf-cache"; mountPath = chatterboxHfCacheMountPath; }
-              { name = "voices"; mountPath = chatterboxVoicesMountPath; }
-              { name = "reference-audio"; mountPath = chatterboxReferenceAudioMountPath; }
-            ];
-          }];
-          # DirectoryOrCreate, not Directory: unlike kokoro's model store (an existing directory
-          # you point this at), a fresh chatterbox deployment's hf_cache/voices/reference_audio
-          # trees plausibly don't exist yet on a new node — the container populates hf_cache itself
-          # on first run, and an operator adds voices/reference_audio content afterwards. See the
-          # module-level STORAGE LESSON comment for why these stay three separate host paths rather
-          # than one shared root.
-          volumes = [
-            {
-              name = "hf-cache";
-              hostPath = { path = cfg.chatterbox.hfCacheHostPath; type = "DirectoryOrCreate"; };
-            }
-            {
-              name = "voices";
-              hostPath = { path = cfg.chatterbox.voicesHostPath; type = "DirectoryOrCreate"; };
-            }
-            {
-              name = "reference-audio";
-              hostPath = {
-                path = cfg.chatterbox.referenceAudioHostPath;
-                type = "DirectoryOrCreate";
-              };
-            }
-          ];
-        };
-      };
-    };
-  };
-
-  chatterboxService.spec = {
-    selector.app = "chatterbox";
-    ports = [{ port = cfg.chatterbox.port; targetPort = cfg.chatterbox.port; }];
-  };
+  ttsNamespace = cfg.namespace;
 in
 {
   options.nixapps.advanced.tts = {
-    enable = lib.mkEnableOption "the tts voice tier (Kokoro CPU narration + optional Chatterbox GPU voice cloning)";
+    enable = lib.mkEnableOption "tts - Kokoro and Chatterbox voice services";
 
     namespace = lib.mkOption {
       type = lib.types.str;
-      default = "tts";
-      description = "Namespace both Deployments (whichever are enabled) and their Services run in.";
-    };
-
-    appName = lib.mkOption {
-      type = lib.types.str;
-      default = "tts";
-      description = ''
-        Name of the generated nixidy/Argo application. Override to adopt an EXISTING application's
-        name so a migration onto this module becomes an in-place spec update (no prune/recreate
-        race) instead of a delete-and-recreate across two applications.
-      '';
+      description = "Namespace to deploy into.";
     };
 
     createNamespace = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Whether this application creates its own namespace.";
-    };
-
-    project = lib.mkOption {
-      type = lib.types.str;
-      default = "apps";
       description = ''
-        nixidy AppProject this application is filed under. Kokoro alone needs no GPU-tier
-        permissions, but chatterbox (if enabled) is a direct GPU consumer sharing one application
-        with it — map this to whatever tier your Argo CD AppProject scheme uses for apps that touch
-        the GPU directly, the same tier comfyui and nixllm's broker file under, rather than the
-        tier for plain CPU-only workloads.
+        Whether this application creates its own namespace. Set false if
+        something else in your cluster owns it already.
       '';
     };
 
     kokoro = {
-      # Plain mkOption (not mkEnableOption, which always defaults to false): this tenant is
-      # genuinely different from chatterbox and defaults ON. It is CPU-only, needs no GPU, no
-      # private image, and no pull secret — the only thing it requires is modelStoreHostPath, which
-      # has no default for the same reason every hostPath option in this family doesn't (every
-      # deployment's storage layout differs). Turning `nixapps.advanced.tts.enable` on without an opinion on
-      # kokoro specifically should give you the tenant that costs nothing extra to run.
-      enable = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Whether to render the Kokoro (CPU narrator-voice) Deployment and Service.";
-      };
+      enable = lib.mkEnableOption "Kokoro, a lightweight CPU-based text-to-speech engine with stock voices";
 
       image = lib.mkOption {
         type = lib.types.str;
         default = "ghcr.io/remsky/kokoro-fastapi-cpu:v0.6.0";
-        description = ''
-          Kokoro image. Pinned to a version tag, never `:latest` — a moving tag can change crash
-          behavior under you between deploys with nothing to diff or review before it happens.
-          Upstream benchmarks this model as real-time even on CPU (82M parameters), which is the
-          whole reason this tenant needs no GPU option surface at all.
-        '';
+        description = "Container image for Kokoro, pinned by tag. CPU-only, no GPU.";
       };
 
       port = lib.mkOption {
         type = lib.types.port;
         default = 8880;
-        description = "Port Kokoro listens on inside the pod, and that the Service targets.";
+        description = "Port the Kokoro API listens on.";
       };
 
-      replicas = lib.mkOption {
-        type = lib.types.ints.unsigned;
-        default = 0;
-        description = ''
-          Desired replica count. Defaults to 0 — see the module-level scale-to-zero comment for the
-          full rationale and, critically, the GitOps prerequisite for this default to survive
-          contact with an external `kubectl scale` toggle. A Deployment resting at 0/0 between uses
-          is this tenant's normal steady state, not a sign anything is broken or missing.
-        '';
-      };
-
-      modelStoreHostPath = lib.mkOption {
+      modelsPath = lib.mkOption {
         type = lib.types.str;
-        example = "/srv/tts/kokoro-models";
         description = ''
-          Absolute host filesystem path to a directory of EXTRA voice models, on whatever node the
-          pod is scheduled to. REQUIRED, no default — every real deployment's storage layout is
-          different, and any default here would silently point at a path that doesn't exist on your
-          node. This is additive to, not a replacement for, the stock voice pack already baked into
-          the image: point it at an empty directory if you have nothing to add yet, rather than
-          skipping the mount — Kokoro's own image expects something mounted at its extra-models path
-          regardless of whether it currently holds anything.
+          Host directory where Kokoro models and voice data are cached.
+
+          Mounted at /app/api/src/models/extra inside the container. The image
+          ships with stock voices; this directory is for additional or custom
+          voice models if you want to extend beyond the defaults.
         '';
-      };
-
-      resources = {
-        requests = {
-          cpu = lib.mkOption {
-            type = lib.types.str;
-            default = "500m";
-            description = "Pod CPU request.";
-          };
-
-          memory = lib.mkOption {
-            type = lib.types.str;
-            default = "1Gi";
-            description = "Pod memory request.";
-          };
-        };
-
-        limits.memory = lib.mkOption {
-          type = lib.types.str;
-          default = "2Gi";
-          description = "Pod memory limit.";
-        };
-      };
-
-      readinessProbe = {
-        path = lib.mkOption {
-          type = lib.types.str;
-          default = "/health";
-          description = ''
-            HTTP path polled for readiness. Kokoro's reference image ships a real dedicated health
-            endpoint at this path — unlike chatterbox below, no root-path workaround is needed here.
-          '';
-        };
-
-        periodSeconds = lib.mkOption {
-          type = lib.types.ints.positive;
-          default = 3;
-          description = "How often the readiness probe polls once startup begins.";
-        };
-
-        failureThreshold = lib.mkOption {
-          type = lib.types.ints.positive;
-          default = 60;
-          description = ''
-            Consecutive probe failures tolerated before the pod is considered failed. At the default
-            `periodSeconds` this is 3 minutes of grace — generous even for a "real-time on CPU"
-            model, because that benchmark describes steady-state inference, not cold weight-loading
-            right after a scale-up from 0.
-          '';
-        };
       };
     };
 
     chatterbox = {
-      enable = lib.mkEnableOption ''
-        the Chatterbox (GPU voice-cloning) Deployment and Service. Opt-in and off by default,
-        unlike kokoro: this tenant needs the shared GPU, a private image, and three required host
-        paths with no defaults — a materially heavier bar than "just point it at a directory"
-      '';
+      enable = lib.mkEnableOption "Chatterbox, a GPU-backed voice-cloning engine";
 
       image = lib.mkOption {
         type = lib.types.str;
         description = ''
-          Chatterbox image. No default, deliberately — there is no image this recipe can honestly
-          pick for you. Upstream's own Dockerfile (devnen/Chatterbox-TTS-Server) hardcodes CUDA, so
-          running this on anything else means a rebuild, and which rebuild is yours: a maintainer's
-          personal registry namespace is not a portable default (CONTRACT.md R2), and a floating tag
-          would be worse (R10). Pin a digest of a build you have validated.
+          Container image for Chatterbox. **You must supply this**, and no default
+          would be honest: upstream Chatterbox publishes no container image, so
+          every deployment runs somebody's own build.
 
-          Whatever you point this at, revisit `gpu.runtimeEnv`-style hardware overrides and the
-          ROCm-specific `securityContext` this module sets — both assume a ROCm build and may not
-          apply to yours.
+          On AMD that build has to be a ROCm one — the published Python packages
+          assume CUDA, so a stock image fails at import on an AMD card rather than
+          falling back to CPU. Build it yourself, pin what you built by digest,
+          and treat the pin as part of the deployment: this model server changes
+          behaviour between builds and a floating tag hides that entirely.
         '';
       };
 
       port = lib.mkOption {
         type = lib.types.port;
         default = 8004;
-        description = "Port Chatterbox listens on inside the pod, and that the Service targets.";
+        description = "Port the Chatterbox API listens on.";
       };
 
-      replicas = lib.mkOption {
-        type = lib.types.ints.unsigned;
-        default = 0;
+      imagePullSecretName = lib.mkOption {
+        type = lib.types.str;
+        default = "";
         description = ''
-          Desired replica count. Defaults to 0, identically to `kokoro.replicas` — see that option
-          and the module-level scale-to-zero comment for the full rationale. Never set this above 1:
-          a device-resource limit of `gpu.deviceResourceCount` per pod means a second replica would
-          simply fail to schedule once the first holds the card's only slot for this tenant.
+          Name of an existing Secret in this namespace for pulling a private
+          Chatterbox image from a registry (e.g., GitHub Container Registry,
+          if the image is private).
+
+          Leave empty if the image is public or already available in the
+          cluster. The Secret itself is not created by this recipe; you must
+          create it separately (e.g., with kubectl create secret docker-registry).
         '';
       };
 
-      existingImagePullSecretName = lib.mkOption {
+      hsaOverrideGfxVersion = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
         description = ''
-          Name of an EXISTING `kubernetes.io/dockerconfigjson` Secret, in this application's
-          namespace, granting pull access to `image` above. This module does not create the
-          Secret — bring your own via whatever mechanism your cluster uses (sealed-secrets,
-          external-secrets, a plain manually-applied Secret). Needed because the reference image is
-          a private ghcr package; leave this `null` if you point `image` at a public one instead, in
-          which case no `imagePullSecrets` entry is rendered at all.
+          AMD ROCm only: the GFX version to report instead of the one probed from
+          the card, e.g. "10.3.0" for RDNA2 consumer parts. ROCm ships kernels for
+          a short list of officially supported GFX targets and refuses a card that
+          is architecturally compatible but absent from that list; overriding the
+          reported version is what makes those cards work at all.
+
+          Null on NVIDIA and on any AMD card ROCm supports directly — the variable
+          is then not set at all, which is not the same as setting it empty.
         '';
       };
 
-      hfCacheHostPath = lib.mkOption {
-        type = lib.types.str;
-        example = "/srv/tts/chatterbox/hf-cache";
+      # ── The hardware arbiter's contract (CONTRACT.md R9) ──────────────────
+      # Chatterbox holds the device while it synthesizes. It declares what it
+      # needs and nothing else: it never reads device state, never sets a
+      # threshold, never evicts anything. The arbiter is not in this repo.
+
+      deviceResource = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = ''
-          Absolute host filesystem path for Chatterbox's own HuggingFace download cache. REQUIRED,
-          no default, same reasoning as every hostPath option in this family. Unlike the two paths
-          below, this one is DERIVED and disposable — see the module-level STORAGE LESSON comment:
-          wipe it and the container simply re-downloads on next start. Created on first use if
-          missing.
+          Scheduler resource name your device plugin advertises for the GPU —
+          "amd.com/gpu", "nvidia.com/gpu", or whatever yours registers.
+
+          Null when the cluster grants device access some other way. Null on a
+          cluster that *does* run a device plugin means this pod schedules and
+          then finds no GPU, so if you have a plugin, set this.
         '';
       };
 
-      voicesHostPath = lib.mkOption {
-        type = lib.types.str;
-        example = "/srv/tts/chatterbox/voices";
+      deviceCount = lib.mkOption {
+        type = lib.types.int;
+        default = 1;
         description = ''
-          Absolute host filesystem path for saved voice PRESETS used for cloning. REQUIRED, no
-          default. Irreplaceable user data — see the module-level STORAGE LESSON comment. Created on
-          first use if missing, but do not treat an empty/missing directory here as harmless the way
-          an empty `hfCacheHostPath` is: it just means you have not saved any voice presets yet, not
-          that nothing was lost.
+          How many devices to request. One: a single synthesis run occupies the
+          card, and asking for more does not make it faster.
         '';
       };
 
-      referenceAudioHostPath = lib.mkOption {
-        type = lib.types.str;
-        example = "/srv/tts/chatterbox/reference-audio";
+      priorityClassName = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
         description = ''
-          Absolute host filesystem path for user-supplied reference audio clips (a 5-10s sample)
-          fed to a cloning request. REQUIRED, no default. Irreplaceable user data, same caution as
-          `voicesHostPath` above — kept as a separate path rather than merged into it because
-          upstream's own container layout expects them at two distinct mount points, and separating
-          them on the host mirrors that boundary instead of blurring it.
+          PriorityClass deciding who yields the device when several workloads want
+          it and they do not fit together — relevant here precisely because this
+          engine shares a card with other consumers. Only your cluster knows what
+          its priority ladder is called, so there is nothing portable to default
+          to. Null runs unprioritized.
         '';
       };
 
-      resources = {
-        requests.memory = lib.mkOption {
-          type = lib.types.str;
-          default = "2Gi";
-          description = "Pod memory request. Ordinary system RAM, separate from the VRAM the device-resource token below gates.";
-        };
+      modelsCachePath = lib.mkOption {
+        type = lib.types.str;
+        description = ''
+          Host directory where Chatterbox caches Hugging Face model downloads
+          (transformers, voice encoders, synthesis models). This directory is
+          large (several GB) and worth placing on fast storage.
 
-        limits.memory = lib.mkOption {
-          type = lib.types.str;
-          default = "12Gi";
-          description = ''
-            Pod memory limit. Voice cloning stages the HuggingFace model and audio buffers through
-            system RAM around the VRAM-bound steps, so a too-tight limit OOM-kills the pod even when
-            the GPU itself had headroom.
-          '';
-        };
+          Mounted at /app/hf_cache inside the container.
+        '';
       };
 
-      readinessProbe = {
-        path = lib.mkOption {
-          type = lib.types.str;
-          default = "/";
-          description = ''
-            HTTP path polled for readiness. See the module-level HEALTH-PROBE LESSON comment: this
-            reference image has no dedicated health endpoint, and root ("/") is the path confirmed
-            live to 200 only once the model has actually finished loading. Verify what your own
-            image serves before assuming this still applies if you point `image` elsewhere.
-          '';
-        };
+      voicesPath = lib.mkOption {
+        type = lib.types.str;
+        description = ''
+          Host directory where voice clones (synthesized speaker profiles) are
+          stored. These are generated from reference audio and allow Chatterbox
+          to speak in custom voices.
 
-        periodSeconds = lib.mkOption {
-          type = lib.types.ints.positive;
-          default = 5;
-          description = "How often the readiness probe polls once startup begins.";
-        };
-
-        failureThreshold = lib.mkOption {
-          type = lib.types.ints.positive;
-          default = 120;
-          description = ''
-            Consecutive probe failures tolerated before the pod is considered failed. At the default
-            `periodSeconds` this is 10 minutes of grace, sized for a genuinely cold model load (no
-            page-cache warmth) right after a scale-up from 0 — the common case for this tenant, not
-            the exception, precisely because it spends most of its life at 0 replicas between uses.
-          '';
-        };
+          Mounted at /app/voices inside the container. Directory will be created
+          if it does not exist.
+        '';
       };
 
-      gpu = {
-        priorityClassName = lib.mkOption {
-          type = lib.types.str;
-          default = "gpu-besteffort";
-          description = ''
-            PriorityClass for the pod. Defaults to the nixgpu ladder's best-effort rung (see
-            nixgpu's priority-ladder module) — same rung as comfyui, and for the same reason:
-            an on-demand backend tool nobody is actively waiting on with low-latency expectations
-            is exactly what best-effort is for — first to yield under VRAM pressure (nixgpu
-            CONTRACT.md B2), with no starvation protection.
-          '';
-        };
+      referenceAudioPath = lib.mkOption {
+        type = lib.types.str;
+        description = ''
+          Host directory where reference audio samples are stored. These are
+          the 5-10 second audio clips you provide to train Chatterbox on a
+          specific speaker's voice before cloning it.
 
-        nodeSelector = lib.mkOption {
-          type = lib.types.attrsOf lib.types.str;
-          default = { gpu = "amd"; };
-          description = "Node selector restricting the pod to the node(s) that carry the shared GPU.";
-        };
-
-        deviceResourceName = lib.mkOption {
-          type = lib.types.str;
-          default = "devic.es/rocm-compute";
-          description = ''
-            Extended-resource name the pod requests, matching whatever device plugin advertises the
-            GPU's compute lane (e.g. nixgpu's device-tokens module, which by default advertises this
-            exact resource name via squat/generic-device-plugin). This is the ONE contract token
-            that makes chatterbox a direct GPU consumer, co-residing with other tenants requesting
-            the same lane up to the plugin's own concurrency ceiling.
-          '';
-        };
-
-        deviceResourceCount = lib.mkOption {
-          type = lib.types.ints.positive;
-          default = 1;
-          description = "How many device-resource slots the pod requests. One pod holds one compute slot.";
-        };
-
-        managedLabelKey = lib.mkOption {
-          type = lib.types.str;
-          default = "example.com/managed";
-          description = ''
-            Pod label key marking this pod as under nixgpu's management (e.g. visible to a pressure
-            watcher that reclaims VRAM by priority). Set to "true" on the pod template. The default
-            is a placeholder domain — rename it to match whatever label domain the rest of your
-            nixgpu deployment uses (it must agree with that deployment's own `managedLabelKey`, e.g.
-            the pressure-watcher module's option of the same name).
-          '';
-        };
-
-        engineLabelKey = lib.mkOption {
-          type = lib.types.str;
-          default = "example.com/engine";
-          description = ''
-            Pod label key identifying which GPU engine this pod uses (see engineLabelValue). The
-            default is a placeholder domain — rename it to match whatever label domain the rest of
-            your nixgpu deployment uses (it must agree with that deployment's own `engineLabelKey`).
-          '';
-        };
-
-        engineLabelValue = lib.mkOption {
-          type = lib.types.str;
-          default = "compute";
-          description = ''
-            Engine identifier for the label above. Voice cloning uses the compute engine (as opposed
-            to a media/video-codec engine, which runs on separate silicon and is unaffected by
-            compute-side pressure — see nixgpu CONTRACT.md B3).
-          '';
-        };
-
-        hsaOverrideGfxVersion = lib.mkOption {
-          type = lib.types.str;
-          default = "";
-          description = ''
-            `HSA_OVERRIDE_GFX_VERSION` passed to the container. ROCm ships official support for a
-            fixed list of GPU architectures; this override tells ROCm to treat the card as the
-            nearest supported architecture.
-
-            DEFAULTS TO "" — the env var is omitted entirely, which is correct for any card ROCm
-            supports natively. It is deliberately NOT defaulted to a real architecture value: a
-            concrete default is only ever right for the one card its author happened to own, and
-            silently applying someone else's GFX override to your card produces confusing ROCm
-            misbehaviour rather than an honest error. Look your own card up in ROCm's supported-GPU
-            list and set it explicitly if it needs one — e.g. an RDNA2 consumer card wants "10.3.0".
-          '';
-        };
+          Mounted at /app/reference_audio inside the container. Directory will
+          be created if it does not exist.
+        '';
       };
     };
   };
 
   config = lib.mkIf cfg.enable {
-    applications.${cfg.appName} = {
-      namespace = cfg.namespace;
-      createNamespace = cfg.createNamespace;
-      project = cfg.project;
+    applications.tts = {
+      namespace = ttsNamespace;
+      inherit (cfg) createNamespace;
+      project = "advanced";
 
-      # `deployments`/`services` are each built as ONE attrset, merging per-tenant contributions at
-      # the leaf (the individual app-name key), NOT by `//`-merging two whole `{ deployments = ...;
-      # services = ...; }` bundles together. That distinction actually matters here, unlike in a
-      # single-tenant module: kokoro and chatterbox are each independently optional, but BOTH
-      # contribute to the SAME two top-level keys (deployments, services) rather than disjoint
-      # ones — a naive top-level `//` between "kokoro's bundle" and "chatterbox's bundle" would let
-      # whichever bundle is merged second silently replace the first's `deployments` (and
-      # `services`) key wholesale, not add to it, dropping that tenant's manifests entirely
-      # whenever both are enabled together.
       resources = {
-        deployments =
-          lib.optionalAttrs cfg.kokoro.enable { kokoro = kokoroDeployment; }
-          // lib.optionalAttrs cfg.chatterbox.enable { chatterbox = chatterboxDeployment; };
+        deployments = lib.mkMerge [
+          (lib.mkIf cfg.kokoro.enable {
+            kokoro.spec = {
+              strategy.type = "Recreate";
+              selector.matchLabels.app = "kokoro";
+              template = {
+                metadata.labels.app = "kokoro";
+                spec = {
+                  containers.kokoro = {
+                    name = "kokoro";
+                    image = cfg.kokoro.image;
+                    ports.http = {
+                      name = "http";
+                      containerPort = cfg.kokoro.port;
+                    };
+                    readinessProbe = {
+                      httpGet = {
+                        path = "/health";
+                        port = cfg.kokoro.port;
+                      };
+                      periodSeconds = 3;
+                      failureThreshold = 60;
+                    };
+                    volumeMounts.models = {
+                      name = "models";
+                      mountPath = "/app/api/src/models/extra";
+                    };
+                  };
+                  volumes.models = {
+                    name = "models";
+                    hostPath = {
+                      path = cfg.kokoro.modelsPath;
+                      type = "Directory";
+                    };
+                  };
+                };
+              };
+            };
+          })
+          (lib.mkIf cfg.chatterbox.enable {
+            chatterbox.spec = {
+              # Recreate, not rolling: a rolling update would briefly run both old
+              # and new pod together, both with GPU access, which breaks the single-writer
+              # assumption (the GPU device is exclusive to one pod at a time).
+              strategy.type = "Recreate";
+              selector.matchLabels.app = "chatterbox";
+              template = {
+                metadata.labels.app = "chatterbox";
+                spec = {
+                  imagePullSecrets = lib.optional (cfg.chatterbox.imagePullSecretName != "") {
+                    name = cfg.chatterbox.imagePullSecretName;
+                  };
+                  # Half the arbiter contract: the order in which holders yield.
+                  # The other half is the device request on the container below.
+                  priorityClassName = cfg.chatterbox.priorityClassName;
+                  containers.chatterbox = {
+                    name = "chatterbox";
+                    image = cfg.chatterbox.image;
+                    # Only set on a card that needs it: an empty value is not the
+                    # same as an unset one, and ROCm reads it whenever it exists.
+                    env = lib.optionalAttrs (cfg.chatterbox.hsaOverrideGfxVersion != null) {
+                      HSA_OVERRIDE_GFX_VERSION = {
+                        name = "HSA_OVERRIDE_GFX_VERSION";
+                        value = cfg.chatterbox.hsaOverrideGfxVersion;
+                      };
+                    };
+                    # The other half of the arbiter contract: ask for the device by
+                    # the name the plugin advertises. Not capacity sizing — this is
+                    # how the scheduler knows the card is taken (CONTRACT.md R8/R9).
+                    resources = lib.optionalAttrs (cfg.chatterbox.deviceResource != null) {
+                      limits.${cfg.chatterbox.deviceResource} = cfg.chatterbox.deviceCount;
+                    };
+                    ports.http = {
+                      name = "http";
+                      containerPort = cfg.chatterbox.port;
+                    };
+                    # Chatterbox has no dedicated /health endpoint. The root path serves
+                    # the web UI and is live once models are loaded (confirmed by checking
+                    # the real deployment: / returns 200, /health returns 404).
+                    # Patient probe: cold start includes loading transformer models from
+                    # disk (several seconds), plus potential GPU contention with other
+                    # advanced workloads. Better to wait than to kill it mid-startup.
+                    readinessProbe = {
+                      httpGet = {
+                        path = "/";
+                        port = cfg.chatterbox.port;
+                      };
+                      periodSeconds = 5;
+                      failureThreshold = 120;
+                    };
+                    securityContext = {
+                      capabilities.add = [ "SYS_PTRACE" ];
+                      seccompProfile.type = "Unconfined";
+                    };
+                    volumeMounts.models = {
+                      name = "models";
+                      mountPath = "/app/hf_cache";
+                    };
+                    volumeMounts.voices = {
+                      name = "voices";
+                      mountPath = "/app/voices";
+                    };
+                    volumeMounts.reference-audio = {
+                      name = "reference-audio";
+                      mountPath = "/app/reference_audio";
+                    };
+                  };
+                  volumes.models = {
+                    name = "models";
+                    hostPath = {
+                      path = cfg.chatterbox.modelsCachePath;
+                      type = "DirectoryOrCreate";
+                    };
+                  };
+                  volumes.voices = {
+                    name = "voices";
+                    hostPath = {
+                      path = cfg.chatterbox.voicesPath;
+                      type = "DirectoryOrCreate";
+                    };
+                  };
+                  volumes.reference-audio = {
+                    name = "reference-audio";
+                    hostPath = {
+                      path = cfg.chatterbox.referenceAudioPath;
+                      type = "DirectoryOrCreate";
+                    };
+                  };
+                };
+              };
+            };
+          })
+        ];
 
-        services =
-          lib.optionalAttrs cfg.kokoro.enable { kokoro = kokoroService; }
-          // lib.optionalAttrs cfg.chatterbox.enable { chatterbox = chatterboxService; };
+        services = lib.mkMerge [
+          (lib.mkIf cfg.kokoro.enable {
+            kokoro.spec = {
+              selector.app = "kokoro";
+              ports.http = {
+                port = cfg.kokoro.port;
+                targetPort = cfg.kokoro.port;
+              };
+            };
+          })
+          (lib.mkIf cfg.chatterbox.enable {
+            chatterbox.spec = {
+              selector.app = "chatterbox";
+              ports.http = {
+                port = cfg.chatterbox.port;
+                targetPort = cfg.chatterbox.port;
+              };
+            };
+          })
+        ];
       };
     };
   };

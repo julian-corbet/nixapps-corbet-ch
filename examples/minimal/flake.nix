@@ -1,11 +1,11 @@
 {
-  description = "nixapps minimal example — renders apps/generic/web through nixidy, unmodified, using only generic placeholder values";
+  description = "nixapps minimal example — renders the reference recipe through nixidy, unmodified, using only generic placeholder values";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # The repository this example lives in, unmodified — proving
-    # apps/generic/web renders from nixapps alone (CONTRACT.md R11).
+    # The repository this example lives in, unmodified — proving the recipe
+    # renders from nixapps alone (CONTRACT.md R11).
     nixapps.url = "path:../..";
 
     nixidy = {
@@ -28,11 +28,11 @@
       nixidyEnvs = forAllSystems (system: nixidy.lib.mkEnvs {
         pkgs = nixpkgs.legacyPackages.${system};
         envs.example.modules = [
-          # The EXISTING module, imported unchanged, through a nested
-          # `nixidyModules.<category>.<app>` attribute path (mirrors
-          # `apps/generic/web`; see the root flake's comment on
+          # The EXISTING recipe, imported unchanged, through a nested
+          # `nixidyModules.<category>.<app>` attribute path that mirrors
+          # `apps/media/castopod` (see the root flake's comment on
           # `nixidyModules` for why this nests one level).
-          nixapps.nixidyModules.generic.web
+          nixapps.nixidyModules.media.castopod
           ./values.nix
         ];
       });

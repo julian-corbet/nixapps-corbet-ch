@@ -1,567 +1,337 @@
-# comfyui — the flagship DIRECT-GPU tenant: a scale-to-zero image-generation app that owns the whole
-# card while it runs. It declares the three-line nixgpu contract (priorityClassName, `strategy:
-# Recreate`, a device-resource token) and never thinks about the card again — see nixgpu CONTRACT.md
-# for what that contract guarantees it in return (B1/B2/B8/B9: co-residence when it fits, clean
-# priority-ordered yield when it doesn't, decided by live measured VRAM, never a card reset).
+# nixapps.advanced.comfyui — ComfyUI, a node-based UI for Stable Diffusion and other image models.
 #
-# GPU DEVICE INFRA (device tokens, priority ladder, pressure watcher) is a separate concern, shipped
-# by the sibling nixgpu project — this module only *consumes* that contract, it does not provide it.
+# What this recipe knows about ComfyUI:
 #
-# WAKE-FRONT CONSUMER, NOT PROVIDER: this module can carry the opt-in labels
-# (`sablier.enable`/`sablier.group`, see `wake.*` below) that let a scale-to-zero waiting-page front
-# recognize and manage this Deployment — but it does not bundle Sablier or Caddy itself. That wiring
-# already exists as its own module: nixgpu's `ondemand-front` (Sablier + a themed Caddy front). Bring
-# your own `nixgpu.ondemandFront.apps.<name>` entry with a `group` matching `wake.sablierGroupLabelValue`
-# below; this module only ever renders the consumer-side labels.
+#   - It is a GPU-direct consumer (direct GPU access, single-instance workload).
+#     There is no sense in running two replicas: they share the one GPU.
+#   - It runs on container startup a pre-start hook that installs Python dependencies
+#     for all custom nodes (their requirements.txt files), so you can git-clone
+#     custom nodes into custom_nodes/ and they Just Work.
+#   - The pre-start hook also handles a ROCm-specific gotcha: several popular custom
+#     nodes (PuLID, InstantID, etc.) unconditionally declare onnxruntime-gpu in
+#     their requirements.txt, which is CUDA-only. On ROCm hardware, this breaks their
+#     imports. The hook detects and removes it, replacing with the CPU fallback.
+#   - It serves HTTP on port 8188 by default. It mounts three directories:
+#     - Models (for Stable Diffusion checkpoints and embeddings)
+#     - Root (for ComfyUI's own data: histories, custom nodes, node configs)
+#     - Output (where rendered images land)
+#   - The readiness probe is patient. It needs time to load models on startup and
+#     may be blocked by GPU contention with other advanced tenants. Cold startup
+#     with model load takes a few seconds; contention means waiting for another app
+#     to release the GPU.
+#   - The strategy is Recreate: a rolling update would briefly run old and new pods
+#     together, both with the GPU card open, which breaks the single-writer assumption.
 #
-# REUSABLE PATTERN: injecting a custom pre-start hook into a read-only-ConfigMap-hostile image.
-# Several ROCm/CUDA base images source an optional startup hook script (here: `preStartHookPath`) IF
-# present, and unconditionally `chmod +x` it before sourcing — which fails, every single time, on a
-# directly-mounted ConfigMap volume (Kubernetes projects those read-only, with no override). The fix
-# generalizes past ComfyUI: an init container copies the ConfigMap's content onto an already-writable
-# volume the main container also mounts, and chmods the COPY, not the ConfigMap-backed original. See
-# `preStartScript` below for the full lesson and a worked example (a CUDA-only Python package several
-# popular custom nodes pull in unconditionally, breaking every ROCm/non-CUDA GPU host the same way).
-#
-# Status: extracted from a production system where this exact shape runs live, scale-to-zero fronted,
-# consuming a single shared GPU alongside other direct-GPU and serving-lane tenants. A Deployment
-# resting at 0/0 replicas between requests is the expected steady state of a wake-front consumer, not
-# a failure — see the `wake.enable` note below on why `replicas` is omitted entirely in that mode.
-# This generalized module has not yet been re-verified live in a fresh cluster — re-verify before
-# trusting it there.
+# This recipe exposes per-app configuration. ComfyUI's CLI args, GPU-specific
+# environment tuning, and data paths are all options you customize at deploy time.
 { lib, config, ... }:
 let
   cfg = config.nixapps.advanced.comfyui;
-
-  # Sablier's OWN discovery label key — fixed by Sablier itself, not a convention of this project
-  # (unlike the nixgpu managed/engine label keys below, which ARE this project family's own
-  # convention and therefore configurable). Only the *group* half is a per-app value worth exposing.
-  sablierEnableLabelKey = "sablier.enable";
-
-  # The always-present CLI flags (own the listen address, route output to outputMountPath), plus
-  # whatever extra native ComfyUI/base-image flags the consumer wants appended.
-  cliArgs = lib.concatStringsSep " "
-    ([ "--listen" "0.0.0.0" "--output-directory" cfg.outputMountPath ] ++ cfg.extraCliArgs);
-
-  preStartHookDir = builtins.dirOf cfg.preStartHookPath;
+  name = "comfyui";
 in
 {
   options.nixapps.advanced.comfyui = {
-    enable = lib.mkEnableOption "the ComfyUI image-generation tenant (a direct GPU consumer under the nixgpu contract)";
+    enable = lib.mkEnableOption "ComfyUI, a node-based image generation UI";
 
     namespace = lib.mkOption {
       type = lib.types.str;
-      default = "comfyui";
-      description = "Namespace the Deployment and Service run in.";
-    };
-
-    appName = lib.mkOption {
-      type = lib.types.str;
-      default = "comfyui";
-      description = ''
-        Name of the generated nixidy/Argo application. Override to adopt an EXISTING application's
-        name so a migration onto this module becomes an in-place spec update (no prune/recreate
-        race) instead of a delete-and-recreate across two applications.
-      '';
+      description = "Namespace to deploy into.";
     };
 
     createNamespace = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Whether this application creates its own namespace.";
-    };
-
-    project = lib.mkOption {
-      type = lib.types.str;
-      default = "apps";
       description = ''
-        nixidy AppProject this application is filed under. Map it to whatever your Argo CD
-        AppProject tiering scheme calls the tier for apps that touch the GPU directly — this pod
-        holds a device-resource token and a GPU priority class, so it belongs with other direct GPU
-        consumers, not with plain CPU-only workloads or with the platform/device-infra tier that
-        nixgpu itself occupies (device tokens, priority ladder, pressure watcher).
+        Whether this application creates its own namespace. Set false if
+        something else in your cluster owns it already.
       '';
     };
 
-    modelStoreHostPath = lib.mkOption {
+    image = lib.mkOption {
       type = lib.types.str;
-      example = "/srv/comfyui/models";
+      default = "yanwk/comfyui-boot@sha256:7c64b5765f649536887f7cfad5f3b5559d1ec81547974e5ed325834782b04d61";
       description = ''
-        Absolute host filesystem path to ComfyUI's `models/` directory root, on whatever node the
-        pod is scheduled to. REQUIRED, no default — every real deployment's storage layout is
-        different, and any default here would silently point at a path that doesn't exist on your
-        node.
+        Container image, pinned by digest.
 
-        Unlike nixllm's serving lane (which mounts one hostPath per model-owning subdirectory),
-        this is ONE mount of ComfyUI's whole `models/` tree, because ComfyUI itself (and its
-        ecosystem of custom nodes / model managers) expects the full conventional layout —
-        `checkpoints/`, `loras/`, `controlnet/`, `insightface/`, and whatever families your custom
-        nodes add — present as siblings under one root, not curated per-subdirectory by this
-        module. If your cluster keeps one big model store shared across several apps, point this
-        at a dedicated subtree scoped to what ComfyUI should see (or curate via bind mounts on the
-        host) rather than the whole shared store, so a reorganization elsewhere in that store can't
-        silently change what this pod sees.
+        ComfyUI uses compute resources (GPU, CPU, disk) during startup: loading
+        models, compiling shaders, discovering extensions. A floating tag can
+        hide a breaking upgrade in the history. Pin it, and move the pin
+        deliberately.
       '';
     };
 
-    modelMountPath = lib.mkOption {
-      type = lib.types.str;
-      default = "/root/ComfyUI/models";
-      description = ''
-        In-pod path `modelStoreHostPath` is mounted at. Defaults to ComfyUI's own convention: a
-        `ComfyUI/models` directory under the app's working directory (see `stateMountPath`). Only
-        change this if you run a different ComfyUI-compatible image with a different expected
-        layout.
-      '';
-    };
-
-    stateHostPath = lib.mkOption {
-      type = lib.types.str;
-      example = "/srv/comfyui/state";
-      description = ''
-        Absolute host filesystem path for the pod's persistent working directory — ComfyUI's own
-        installation lives here (its Python venv, `custom_nodes/`, user data, cache) across pod
-        restarts. REQUIRED, no default, for the same reason as `modelStoreHostPath`. The directory
-        is created on first use if missing; the container runs as root and owns everything under it
-        as root — this module makes no attempt to chown it to a non-root uid.
-      '';
-    };
-
-    stateMountPath = lib.mkOption {
-      type = lib.types.str;
-      default = "/root";
-      description = ''
-        In-pod mount path for `stateHostPath`, and the base directory `preStartHookPath` and
-        `modelMountPath` (ComfyUI's own default install location) are both relative to. Matches the
-        default image's own home-directory convention; only change this for an image laid out
-        differently.
-      '';
-    };
-
-    outputHostPath = lib.mkOption {
-      type = lib.types.str;
-      example = "/srv/comfyui/output";
-      description = ''
-        Absolute host filesystem path rendered images are written to. REQUIRED, no default — point
-        this at wherever your own storage/media layout wants generated images to land. The
-        container writes here as root (see `stateHostPath` above): if this directory is owned by, or
-        grants write access to, a non-root user or group on your host (a setgid directory, an ACL),
-        files written by this pod will still show `root` as their owner — a harmless cosmetic gap,
-        not a permissions failure, since the parent directory's own ownership is unaffected.
-      '';
-    };
-
-    outputMountPath = lib.mkOption {
-      type = lib.types.str;
-      default = "/output";
-      description = ''
-        In-pod mount path for `outputHostPath`. Also becomes the `--output-directory` value passed
-        to ComfyUI via `CLI_ARGS`, so every render lands here rather than in ComfyUI's own working
-        tree under `stateMountPath`.
-      '';
-    };
-
-    httpPort = lib.mkOption {
+    port = lib.mkOption {
       type = lib.types.port;
       default = 8188;
-      description = "Port ComfyUI listens on inside the pod, and that the Service targets. Matches ComfyUI's own default.";
+      description = "Port the ComfyUI web UI listens on.";
     };
 
-    extraCliArgs = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
-      example = [ "--lowvram" "--preview-method" "auto" ];
-      description = ''
-        Extra native ComfyUI / base-image CLI flags, appended after the always-present
-        `--listen 0.0.0.0 --output-directory <outputMountPath>`. Empty by default — most
-        deployments need nothing here.
-      '';
-    };
-
-    preStartHookPath = lib.mkOption {
+    cliArgs = lib.mkOption {
       type = lib.types.str;
-      default = "/root/user-scripts/pre-start.sh";
+      default = "--listen 0.0.0.0 --output-directory /images-out";
       description = ''
-        In-pod path the base image's own entrypoint sources on every container start, IF a file
-        exists there. This default is `yanwk/comfyui-boot`'s own convention (its ROCm entrypoint
-        checks this exact path) — a different base image may hook startup differently, or not at
-        all; check its own entrypoint before assuming this path applies.
+        Command-line arguments passed to ComfyUI on startup.
+
+        --listen 0.0.0.0 makes it accessible from the network.
+        --output-directory /images-out points rendered images to the mounted
+        images volume (which you map to persistent storage).
+        Other options: --preview-method auto (for web previews), --cpu-mode
+        (force CPU even with GPU present), see ComfyUI --help for full list.
       '';
     };
 
-    preStartScript = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      example = ''
-        #!/bin/bash
-        set -eu
-        echo "Installing custom node Python requirements..."
-        for req in /root/ComfyUI/custom_nodes/*/requirements.txt; do
-          [ -f "$req" ] || continue
-          # Non-fatal per node: one custom node's flaky/optional dependency must not take down
-          # every other node sharing this pod.
-          pip install --no-cache-dir -r "$req" || echo "WARN: failed installing $req"
-        done
-        # onnxruntime-gpu is CUDA-only and several popular custom nodes (face/ID-swap nodes among
-        # them) list it unconditionally for any x86_64 Linux host — their requirements.txt carries
-        # no ROCm/CUDA marker at all. On a non-CUDA GPU host it silently clobbers a working plain
-        # `onnxruntime` install and breaks every node that imports onnxruntime/insightface. Strip
-        # it every time, regardless of which node pulled it in.
-        if pip show onnxruntime-gpu >/dev/null 2>&1; then
-          pip uninstall -y onnxruntime-gpu
-          pip install --no-cache-dir --force-reinstall --no-deps onnxruntime
-        fi
-      '';
-      description = ''
-        Optional shell script content, run once per pod start BEFORE ComfyUI itself starts, via the
-        copy-then-chmod init container this module renders when set. Use it for custom-node
-        bootstrap work the base image doesn't do for you — most commonly installing a git-cloned
-        custom node's own `requirements.txt` (ComfyUI-Manager does this automatically when a node
-        is installed through its own UI; a node added by cloning straight into `custom_nodes/`
-        otherwise gets no dependency install at all) and any package-conflict fixups your custom
-        nodes need (see the CUDA/onnxruntime example above — the general lesson: a
-        GPU-vendor-conditional Python package pulled in by a dependency that assumes CUDA is the
-        only non-CPU backend in existence). `null` (the default) skips the hook entirely: no
-        ConfigMap, no init container, nothing mounted or written at `preStartHookPath`.
-
-        WHY an init container copies this onto a writable volume instead of mounting the ConfigMap
-        directly at `preStartHookPath`: ConfigMap volumes are always projected READ-ONLY, with no
-        override — but an entrypoint that unconditionally `chmod +x`'s this hook before sourcing it
-        (as the default image's does) fails on a read-only mount and, under the entrypoint's own
-        `set -e`, aborts startup before the app ever runs. Every time, not intermittently. The fix
-        generalizes past ComfyUI: whenever a base image insists on `chmod`-ing a file you supply via
-        ConfigMap, mount the ConfigMap somewhere else read-only and have an init container copy it
-        onto an already-writable volume the main container also mounts, then chmod the COPY, never
-        the ConfigMap-backed original.
-      '';
-    };
-
-    readiness = {
-      periodSeconds = lib.mkOption {
-        type = lib.types.ints.positive;
-        default = 5;
-        description = "How often the readiness probe polls once startup begins.";
-      };
-
-      failureThreshold = lib.mkOption {
-        type = lib.types.ints.positive;
-        default = 180;
-        description = ''
-          Consecutive probe failures tolerated before the pod is considered failed. At the default
-          `periodSeconds` this is 15 minutes of grace — sized for a genuinely slow cold start (a
-          `preStartScript` installing custom-node dependencies from scratch, plus first model load)
-          rather than the average one. This matters specifically because a wake-front (see `wake.*`)
-          holds callers on an honest waiting page until the pod is Ready: too short a threshold here
-          shows up as k8s declaring the pod failed and restarting it mid cold-start, every time a
-          slow load coincides with a fresh pull or a cold page cache — not as an occasional flake.
-          Raise it further if your custom nodes or models are heavier than the reference deployment.
-        '';
-      };
-    };
-
-    resources = {
-      memoryLimit = lib.mkOption {
-        type = lib.types.str;
-        default = "24Gi";
-        description = ''
-          Pod memory limit. This is ordinary system RAM, separate from the VRAM the device-resource
-          token below gates — image-generation pipelines commonly stage tensors and decode/encode
-          buffers through system RAM around the VRAM-bound steps, so a too-tight memory limit
-          OOM-kills the pod even when the GPU itself had headroom.
-        '';
-      };
-
-      memoryRequest = lib.mkOption {
-        type = lib.types.str;
-        default = "4Gi";
-        description = "Pod memory request.";
-      };
-    };
-
-    clusterIP = lib.mkOption {
+    hsaOverrideGfxVersion = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = ''
-        Optional fixed ClusterIP for the Service. Leave null for a normal, cluster-assigned
-        ClusterIP (the right choice for almost everyone). Only set this if your cluster's
-        CNI/routing convention needs consuming apps (or a wake-front's reverse proxy) to reach a
-        stable, pre-known VIP rather than resolving the Service by DNS.
+        AMD ROCm only: the GFX version to report instead of the one probed from
+        the card, e.g. "10.3.0" for RDNA2 consumer parts. ROCm ships kernels for
+        a short list of officially supported GFX targets, and a card that is
+        architecturally compatible but not on that list is refused outright —
+        overriding the reported version is what makes those cards work at all.
+
+        Null on NVIDIA, and on any AMD card ROCm supports directly; the variable
+        is then not set. If you need it and guess wrong, the runtime either
+        refuses to start or miscompiles kernels, so check your GFX target rather
+        than trying values.
       '';
     };
 
-    gpu = {
-      priorityClassName = lib.mkOption {
-        type = lib.types.str;
-        default = "gpu-besteffort";
-        description = ''
-          PriorityClass for the pod. Defaults to the nixgpu ladder's best-effort rung (see nixgpu's
-          priority-ladder module) — a throwaway render nobody is actively waiting on is exactly what
-          best-effort is for: first to yield under VRAM pressure (nixgpu CONTRACT.md B2), with no
-          starvation protection. Priority is a property of intent, not of this app's identity — raise
-          it to a higher rung only for the duration of a specific run an operator is actively waiting
-          on, per the ladder's own design.
-        '';
-      };
+    # ── The hardware arbiter's contract (CONTRACT.md R9) ────────────────────
+    # This app holds the whole device while it runs. It declares what it needs
+    # and nothing else: it never reads device state, never sets a threshold, and
+    # never evicts anything. Whatever arbitrates the device is not in this repo.
 
-      nodeSelector = lib.mkOption {
-        type = lib.types.attrsOf lib.types.str;
-        default = { gpu = "amd"; };
-        description = "Node selector restricting the pod to the node(s) that carry the shared GPU.";
-      };
+    deviceResource = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Scheduler resource name your device plugin advertises for the GPU —
+        "amd.com/gpu", "nvidia.com/gpu", or whatever yours registers.
 
-      deviceResourceName = lib.mkOption {
-        type = lib.types.str;
-        default = "devic.es/rocm-compute";
-        description = ''
-          Extended-resource name the pod requests, matching whatever device plugin advertises the
-          GPU's compute lane (e.g. nixgpu's device-tokens module, which by default advertises this
-          exact resource name via squat/generic-device-plugin). This is the ONE contract token that
-          makes this a direct GPU consumer — it co-resides with other tenants requesting the same
-          lane, up to the plugin's own concurrency ceiling.
-        '';
-      };
-
-      deviceResourceCount = lib.mkOption {
-        type = lib.types.ints.positive;
-        default = 1;
-        description = "How many device-resource slots the pod requests. One pod holds one compute slot.";
-      };
-
-      managedLabelKey = lib.mkOption {
-        type = lib.types.str;
-        default = "example.com/managed";
-        description = ''
-          Pod label key marking this pod as under nixgpu's management (e.g. visible to a pressure
-          watcher that reclaims VRAM by priority). Set to "true" on the pod template. The default is
-          a placeholder domain — rename it to match whatever label domain the rest of your nixgpu
-          deployment uses (it must agree with that deployment's own `managedLabelKey`, e.g. the
-          pressure-watcher module's option of the same name).
-        '';
-      };
-
-      engineLabelKey = lib.mkOption {
-        type = lib.types.str;
-        default = "example.com/engine";
-        description = ''
-          Pod label key identifying which GPU engine this pod uses (see engineLabelValue). The
-          default is a placeholder domain — rename it to match whatever label domain the rest of
-          your nixgpu deployment uses (it must agree with that deployment's own `engineLabelKey`).
-        '';
-      };
-
-      engineLabelValue = lib.mkOption {
-        type = lib.types.str;
-        default = "compute";
-        description = ''
-          Engine identifier for the label above. Image generation uses the compute engine (as
-          opposed to a media/video-codec engine, which runs on separate silicon and is unaffected by
-          compute-side pressure — see nixgpu CONTRACT.md B3).
-        '';
-      };
-
-      hsaOverrideGfxVersion = lib.mkOption {
-        type = lib.types.str;
-        default = "";
-        description = ''
-          `HSA_OVERRIDE_GFX_VERSION` passed to the container. ROCm ships official support for a
-          fixed list of GPU architectures; this override tells ROCm to treat the card as the nearest
-          supported architecture.
-
-          DEFAULTS TO "" — the env var is omitted entirely, which is correct for any card ROCm
-          supports natively. It is deliberately NOT defaulted to a real architecture value: a
-          concrete default is only ever right for the one card its author happened to own, and
-          silently applying someone else's GFX override to your card produces confusing ROCm
-          misbehaviour rather than an honest error. Look your own card up in ROCm's supported-GPU
-          list and set it explicitly if it needs one — e.g. an RDNA2 consumer card wants "10.3.0".
-        '';
-      };
+        Null when the cluster grants device access some other way (a host device
+        mount, a dedicated node). Note that null on a cluster which *does* run a
+        device plugin means this pod schedules successfully and then finds no
+        GPU — so if you have a plugin, set this.
+      '';
     };
 
-    # Carrying the wake-front CONSUMER labels (Sablier's own `sablier.enable`/`sablier.group`
-    # discovery labels) on this Deployment. This module never bundles Sablier or a Caddy front
-    # itself — pair `wake.enable = true` with nixgpu's `ondemand-front` module (or any Sablier
-    # deployment you run yourself) and add a matching `nixgpu.ondemandFront.apps.<name>` entry
-    # whose `group` equals `wake.sablierGroupLabelValue` below.
-    #
-    # `wake.enable` also changes how `replicas` is rendered (see the `config` section below): when
-    # enabled, `replicas` is OMITTED from the Deployment spec entirely, deliberately, because the
-    # wake-front now owns the replica count out-of-band (scaling the Deployment 0<->1 on traffic).
-    # If GitOps also declared a fixed replica count here, every sync would fight the wake-front's
-    # own scaling, flapping the pod between the two. Leave this disabled only for a tenant that
-    # runs unscaled at a fixed replica count of 1.
-    wake = {
-      enable = lib.mkEnableOption
-        "carrying the wake-front consumer labels (Sablier's sablier.enable/sablier.group), and omitting replicas so the wake-front owns scaling — see the comment above this option group";
-
-      sablierGroupLabelKey = lib.mkOption {
-        type = lib.types.str;
-        default = "sablier.group";
-        description = ''
-          Sablier's own discovery label key, fixed by Sablier itself — not this project's
-          convention (unlike `gpu.managedLabelKey`/`gpu.engineLabelKey` above). Override only if
-          your Sablier deployment is configured with a non-default label-tag prefix.
-        '';
-      };
-
-      sablierGroupLabelValue = lib.mkOption {
-        type = lib.types.str;
-        default = cfg.appName;
-        description = ''
-          Sablier group name for this Deployment. Must match the `group` field of the corresponding
-          entry in the wake-front's own `apps` option (e.g. `nixgpu.ondemandFront.apps.<name>.group`)
-          — this is how the wake-front's Sablier instance knows which workload a given waiting-page
-          route is waiting for. Defaults to `appName`, which is fine as long as you use the same
-          value on both sides; only diverge if you need the two names to differ.
-        '';
-      };
+    deviceCount = lib.mkOption {
+      type = lib.types.int;
+      default = 1;
+      description = ''
+        How many devices to request. One: ComfyUI takes the whole card for the
+        duration of a render, and asking for more does not make it faster.
+      '';
     };
 
-    images = {
-      comfyui = lib.mkOption {
-        type = lib.types.str;
-        default = "yanwk/comfyui-boot@sha256:7c64b5765f649536887f7cfad5f3b5559d1ec81547974e5ed325834782b04d61";
-        description = ''
-          ComfyUI image. Pinned by DIGEST, not a floating tag — a moving `:rocm`-style tag can
-          change crash behavior under you between deploys with nothing to diff or review; a digest
-          pin makes every upgrade a deliberate, auditable bump instead of a silent rebase. Point
-          this at your own image if you use a different ComfyUI distribution or a different backend
-          (CUDA, etc.) — in which case also revisit `gpu.hsaOverrideGfxVersion` and the ROCm-specific
-          `securityContext` this module sets, which may not apply.
-        '';
-      };
+    priorityClassName = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        PriorityClass deciding who yields the device when more than one workload
+        wants it and they do not fit together. Only your cluster knows what its
+        priority ladder is called, so there is nothing portable to default to.
 
-      preStartInstaller = lib.mkOption {
-        type = lib.types.str;
-        default = "busybox:stable@sha256:b7f3d86d6e84fc17718c48bcde1450807faa2d56704205c697b4bd5df7b9e29f";
-        description = ''
-          Minimal image for the copy-then-chmod init container that installs `preStartScript` onto
-          the writable state volume (see that option's doc) — a POSIX shell plus cp/chmod is all it
-          needs. Only rendered/used when `preStartScript` is set.
-        '';
-      };
+        Null runs unprioritized — fine when this is the only thing on the card,
+        wrong the moment it is not.
+      '';
+    };
+
+    modelsPath = lib.mkOption {
+      type = lib.types.str;
+      description = ''
+        Host directory where Stable Diffusion checkpoints, VAEs, embeddings,
+        and other models live. This is mounted into the container at
+        /root/ComfyUI/models and is the conventional place ComfyUI looks for
+        model files.
+
+        Large binary files (checkpoints are typically 2–10 GB each): worth
+        putting on storage tuned for sequential access rather than random I/O.
+      '';
+    };
+
+    rootPath = lib.mkOption {
+      type = lib.types.str;
+      description = ''
+        Host directory where ComfyUI stores its state: histories, loaded node
+        configs, custom node git clones, and per-session data.
+
+        Mounted at /root inside the container. If this directory does not exist
+        on the host, the container creates it on first startup.
+      '';
+    };
+
+    imagesPath = lib.mkOption {
+      type = lib.types.str;
+      description = ''
+        Host directory where ComfyUI writes rendered images (the output of the
+        generation graph). Mounted at /images-out inside the container.
+
+        The --output-directory /images-out CLI arg points ComfyUI to this mount.
+        Image output is sequential (one file per render); worth putting on storage
+        tuned for that (not random I/O).
+      '';
     };
   };
 
   config = lib.mkIf cfg.enable {
-    applications.${cfg.appName} = {
-      namespace = cfg.namespace;
-      createNamespace = cfg.createNamespace;
-      project = cfg.project;
+    applications.${name} = {
+      inherit (cfg) namespace createNamespace;
+      project = "advanced";
 
-      # `resources` is built as ONE attrset (rather than via top-level `//` on `applications.${cfg.appName}`
-      # itself) so that conditionally adding `configMaps` below can never shallow-overwrite `deployments`/
-      # `services` — `//` only merges the keys present on each side, and `resources` must stay the single
-      # attrset those keys are merged onto.
       resources = {
-        deployments.comfyui = {
-          # `sablier.enable`/`sablier.group` are Sablier's own discovery labels and, per Sablier's
-          # own convention, live on the DEPLOYMENT's resource labels — not the pod template's —
-          # since the wake-front's Sablier instance discovers scaling targets by querying
-          # Deployments directly. The nixgpu managed/engine labels below are the opposite: they
-          # mark individual PODS for a pressure watcher that inspects running pods, so they belong
-          # on the template.
-          metadata.labels = { app = "comfyui"; } // lib.optionalAttrs cfg.wake.enable {
-            "${sablierEnableLabelKey}" = "true";
-            "${cfg.wake.sablierGroupLabelKey}" = cfg.wake.sablierGroupLabelValue;
-          };
+        configMaps.comfyui-pre-start.data = {
+          "pre-start.sh" = ''
+            #!/bin/bash
+            set -eu
+            echo "[INFO] Installing custom node Python requirements..."
+            for req in /root/ComfyUI/custom_nodes/*/requirements.txt; do
+              [ -f "$req" ] || continue
+              echo "[INFO]   $req"
+              # Non-fatal per-node: a flaky/optional dependency in one custom node's requirements.txt must
+              # not take down ComfyUI startup for every other tenant using this same pod.
+              pip install --no-cache-dir -r "$req" || echo "[WARN] failed installing $req"
+            done
+            # onnxruntime-gpu is CUDA-only (needs libcudart.so.13) and unconditionally listed by several
+            # common custom nodes (PuLID_ComfyUI, ComfyUI_InstantID, ...) for any x86_64 Linux box — their
+            # requirements.txt markers check platform_machine, never NVIDIA vs AMD. On a ROCm box it
+            # silently clobbers a working plain `onnxruntime` install and breaks every node that imports
+            # insightface/onnxruntime. Never let it survive the loop above, regardless of
+            # which node's requirements.txt pulled it in.
+            if pip show onnxruntime-gpu >/dev/null 2>&1; then
+              echo "[INFO] Removing incompatible onnxruntime-gpu (CUDA-only, this is ROCm)..."
+              pip uninstall -y onnxruntime-gpu
+              pip install --no-cache-dir --force-reinstall --no-deps onnxruntime
+            fi
+          '';
+        };
 
-          spec = {
-            # strategy: Recreate, not RollingUpdate: this pod holds the ONE compute device-resource
-            # slot (gpu.deviceResourceCount, default 1), so a surging new pod couldn't schedule
-            # anyway while the old one is still up — Recreate tears the old pod down first,
-            # avoiding a pod stuck Pending for the whole rollout.
-            strategy.type = "Recreate";
-            selector.matchLabels.app = "comfyui";
-            template = {
-              metadata.labels = {
-                app = "comfyui";
-                "${cfg.gpu.managedLabelKey}" = "true";
-                "${cfg.gpu.engineLabelKey}" = cfg.gpu.engineLabelValue;
-              };
-              spec = {
-                nodeSelector = cfg.gpu.nodeSelector;
-                priorityClassName = cfg.gpu.priorityClassName;
+        deployments.${name}.spec = {
+          # Recreate, not rolling. A rolling update briefly runs the old and new
+          # pod together, both holding the GPU open, and ComfyUI expects to be its
+          # single writer (GPU device access is exclusive).
+          strategy.type = "Recreate";
+          selector.matchLabels.app = name;
+          template = {
+            metadata.labels.app = name;
+            spec = {
+              # Half the arbiter contract: the order in which holders yield.
+              # The other half is the device request on the container below.
+              priorityClassName = cfg.priorityClassName;
 
-                initContainers = lib.optional (cfg.preStartScript != null) {
-                  name = "pre-start-install";
-                  image = cfg.images.preStartInstaller;
-                  command = [
-                    "sh"
-                    "-c"
-                    "mkdir -p ${preStartHookDir} && cp /pre-start-src/pre-start.sh ${cfg.preStartHookPath} && chmod +x ${cfg.preStartHookPath}"
-                  ];
-                  volumeMounts = [
-                    { name = "state"; mountPath = cfg.stateMountPath; }
-                    { name = "pre-start"; mountPath = "/pre-start-src"; }
-                  ];
+              initContainers.pre-start-install = {
+                name = "pre-start-install";
+                image = "busybox:stable@sha256:b7f3d86d6e84fc17718c48bcde1450807faa2d56704205c697b4bd5df7b9e29f";
+                command = [ "sh" "-c" "mkdir -p /root/user-scripts && cp /pre-start-src/pre-start.sh /root/user-scripts/pre-start.sh && chmod +x /root/user-scripts/pre-start.sh" ];
+                volumeMounts.root = {
+                  name = "root";
+                  mountPath = "/root";
                 };
-
-                containers = [{
-                  name = "comfyui";
-                  image = cfg.images.comfyui;
-                  env = [
-                    { name = "CLI_ARGS"; value = cliArgs; }
-                  ] ++ lib.optional (cfg.gpu.hsaOverrideGfxVersion != "")
-                    { name = "HSA_OVERRIDE_GFX_VERSION"; value = cfg.gpu.hsaOverrideGfxVersion; };
-                  ports = [{ name = "http"; containerPort = cfg.httpPort; }];
-                  # Ready only when ComfyUI actually serves — see readiness.failureThreshold's doc
-                  # for why the tolerance is generous: a wake-front holds callers on its waiting
-                  # page until this probe passes, so a threshold sized for the average cold start
-                  # (rather than the slowest one) shows up as spurious restarts mid-load, not as an
-                  # occasional flake.
-                  readinessProbe = {
-                    httpGet = { path = "/"; port = cfg.httpPort; };
-                    periodSeconds = cfg.readiness.periodSeconds;
-                    failureThreshold = cfg.readiness.failureThreshold;
-                  };
-                  resources = {
-                    limits = {
-                      "${cfg.gpu.deviceResourceName}" = cfg.gpu.deviceResourceCount;
-                      memory = cfg.resources.memoryLimit;
-                    };
-                    requests.memory = cfg.resources.memoryRequest;
-                  };
-                  # Carried as-is from the originating production deployment (undocumented there
-                  # beyond "required" — this generalized module has not independently re-derived
-                  # why, only preserved it): without SYS_PTRACE + an unconfined seccomp profile,
-                  # this ROCm base image's process fails to initialize the GPU correctly.
-                  securityContext = {
-                    capabilities.add = [ "SYS_PTRACE" ];
-                    seccompProfile.type = "Unconfined";
-                  };
-                  volumeMounts = [
-                    { name = "models"; mountPath = cfg.modelMountPath; }
-                    { name = "state"; mountPath = cfg.stateMountPath; }
-                    { name = "output"; mountPath = cfg.outputMountPath; }
-                  ];
-                }];
-
-                volumes = [
-                  { name = "models"; hostPath = { path = cfg.modelStoreHostPath; type = "Directory"; }; }
-                  { name = "state"; hostPath = { path = cfg.stateHostPath; type = "DirectoryOrCreate"; }; }
-                  { name = "output"; hostPath = { path = cfg.outputHostPath; type = "Directory"; }; }
-                ] ++ lib.optional (cfg.preStartScript != null) {
+                volumeMounts.pre-start = {
                   name = "pre-start";
-                  # 0755 (rwxr-xr-x) — belt-and-suspenders only: the init container chmods its OWN
-                  # copy explicitly, this just avoids handing out a non-executable file on the
-                  # read-only ConfigMap-backed source in the meantime.
-                  configMap = { name = "${cfg.appName}-pre-start"; defaultMode = 493; };
+                  mountPath = "/pre-start-src";
+                };
+              };
+              containers.${name} = {
+                inherit name;
+                inherit (cfg) image;
+                env = {
+                  CLI_ARGS = {
+                    name = "CLI_ARGS";
+                    value = cfg.cliArgs;
+                  };
+                }
+                # Only set on a card that needs it: an empty value is not the same
+                # as an unset one, and ROCm reads the variable whenever it exists.
+                // lib.optionalAttrs (cfg.hsaOverrideGfxVersion != null) {
+                  HSA_OVERRIDE_GFX_VERSION = {
+                    name = "HSA_OVERRIDE_GFX_VERSION";
+                    value = cfg.hsaOverrideGfxVersion;
+                  };
+                };
+                # The other half of the arbiter contract: ask for the device by
+                # the name the plugin advertises. Not capacity sizing — this is
+                # how the scheduler knows the card is taken (CONTRACT.md R8/R9).
+                resources = lib.optionalAttrs (cfg.deviceResource != null) {
+                  limits.${cfg.deviceResource} = cfg.deviceCount;
+                };
+                ports.http = {
+                  name = "http";
+                  containerPort = cfg.port;
+                };
+                # Patient probe. Needs time to load models (a few seconds from cache),
+                # may be blocked by GPU contention with other advanced workloads. Better
+                # to wait than to declare the pod dead mid-startup.
+                readinessProbe = {
+                  httpGet = {
+                    path = "/";
+                    port = cfg.port;
+                  };
+                  periodSeconds = 5;
+                  failureThreshold = 180;
+                };
+                securityContext = {
+                  capabilities.add = [ "SYS_PTRACE" ];
+                  seccompProfile.type = "Unconfined";
+                };
+                volumeMounts.models = {
+                  name = "models";
+                  mountPath = "/root/ComfyUI/models";
+                };
+                volumeMounts.root = {
+                  name = "root";
+                  mountPath = "/root";
+                };
+                volumeMounts.images = {
+                  name = "images-generated";
+                  mountPath = "/images-out";
+                };
+              };
+              volumes.models = {
+                name = "models";
+                hostPath = {
+                  path = cfg.modelsPath;
+                  type = "Directory";
+                };
+              };
+              volumes.root = {
+                name = "root";
+                hostPath = {
+                  path = cfg.rootPath;
+                  type = "DirectoryOrCreate";
+                };
+              };
+              volumes.images-generated = {
+                name = "images-generated";
+                hostPath = {
+                  path = cfg.imagesPath;
+                  type = "Directory";
+                };
+              };
+              volumes.pre-start = {
+                name = "pre-start";
+                configMap = {
+                  name = "comfyui-pre-start";
+                  # 0755 in decimal. Nix has no octal literal, and the Kubernetes
+                  # API takes this field as a plain integer — so the familiar
+                  # octal spelling has to be converted here, not written directly.
+                  defaultMode = 493;
                 };
               };
             };
-            # `replicas` is deliberately OMITTED when `wake.enable` is true — see the comment above
-            # the `wake` option group. Rendering `replicas = 1` here as well as `wake.enable`'s
-            # labels would make every GitOps sync fight the wake-front's own 0<->1 scaling.
-          } // lib.optionalAttrs (!cfg.wake.enable) { replicas = 1; };
+          };
         };
 
-        services.comfyui.spec = {
-          selector.app = "comfyui";
+        services.${name}.spec = {
           type = "ClusterIP";
-          ports = [{ name = "http"; port = cfg.httpPort; targetPort = cfg.httpPort; }];
-        } // lib.optionalAttrs (cfg.clusterIP != null) { clusterIP = cfg.clusterIP; };
-      } // lib.optionalAttrs (cfg.preStartScript != null) {
-        configMaps."${cfg.appName}-pre-start".data."pre-start.sh" = cfg.preStartScript;
+          selector.app = name;
+          ports.http = {
+            name = "http";
+            port = cfg.port;
+            targetPort = cfg.port;
+          };
+        };
       };
     };
   };

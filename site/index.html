@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <title>nixapps &mdash; a curated library of self-hosted app modules for nixidy + Argo CD</title>
-  <meta name="description" content="A curated library of self-hosted application modules for a nixidy + Argo CD cluster: apps as typed Nix, not copy-pasted YAML. The LLM serving lane graduated to nixllm; three tenants (image generation, TTS, generic web) have landed and evaluate, none yet adopted into a live cluster. Pre-alpha.">
+  <title>nixapps &mdash; a cookbook of self-hosted app recipes for nixidy + Argo CD</title>
+  <meta name="description" content="A cookbook of recipes for ordinary self-hosted applications: 39 recipes across 12 categories, each one plain nixidy module rendered to Argo CD manifests. No recipe has been adopted into a live cluster yet &mdash; every one renders in CI; none has run in production.">
 
   <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 
   <meta property="og:title" content="nixapps">
-  <meta property="og:description" content="A curated library of self-hosted application modules for a nixidy + Argo CD cluster: apps as typed Nix, not copy-pasted YAML.">
+  <meta property="og:description" content="A cookbook of recipes for ordinary self-hosted applications: 39 recipes across 12 categories, rendered to Argo CD manifests by nixidy. Apps as typed Nix, not copy-pasted YAML.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://nixapps.corbet.ch">
   <meta name="twitter:card" content="summary">
@@ -27,7 +27,7 @@
     <div class="nav-links">
       <a href="https://github.com/julian-corbet/nixapps-corbet-ch">GitHub</a>
       <a href="#status">Status</a>
-      <a href="#roadmap">Roadmap</a>
+      <a href="#recipes">Recipes</a>
       <!-- nix* family dropdown — CANONICAL SNIPPET (source of truth).
            Copy this <details> block as the LAST child of a member page's
            .nav-links, and set aria-current="page" on that page's own entry.
@@ -59,14 +59,17 @@
 
   <div class="hero-content">
     <h1>nixapps</h1>
-    <p class="tagline">A curated library of self-hosted application modules for a nixidy + Argo CD cluster</p>
-    <p class="subtitle">Apps as typed Nix, not copy-pasted YAML. The tenant layer of an
-    interoperating project set: application modules that render through
-    <a href="https://github.com/arnarg/nixidy">nixidy</a> and deploy onto the spine
+    <p class="tagline">A cookbook of recipes for ordinary self-hosted applications</p>
+    <p class="subtitle">Apps as typed Nix, not copy-pasted YAML. Each recipe is one
+    plain <a href="https://github.com/arnarg/nixidy">nixidy</a> module describing
+    how to run one app completely enough that a stranger can deploy it, and
+    configuring nothing about any particular site. Recipes render onto the spine
     shipped by <a href="https://github.com/julian-corbet/nixk3s-corbet-ch">nixk3s</a>.
-    GPU-consuming apps declare the three-line contract from
-    <a href="https://github.com/julian-corbet/nixgpu-corbet-ch">nixgpu</a> and never
-    think about the card again.</p>
+    The two recipes that hold a scarce GPU declare against
+    <a href="https://github.com/julian-corbet/nixgpu-corbet-ch">nixgpu</a>'s arbiter
+    and implement none of it; apps that need an LLM point at
+    <a href="https://github.com/julian-corbet/nixllm-corbet-ch">nixllm</a>'s front
+    door instead of running one of their own.</p>
     <div class="cta">
       <a href="#status" class="btn btn-primary">Read the honest status</a>
       <a href="https://github.com/julian-corbet/nixapps-corbet-ch" class="btn btn-secondary">View on GitHub</a>
@@ -78,35 +81,37 @@
 
 <section id="status" class="how-it-works">
   <div class="container">
-    <h2>Status: pre-alpha, three tenants landed, none live yet</h2>
+    <h2>Status: 39 recipes, zero live adoption</h2>
     <div class="steps">
       <div class="step">
         <div class="step-num">!</div>
-        <h3>Three modules landed, evaluated, not yet adopted</h3>
-        <p>Image generation (<code>comfyui</code>), text-to-speech
-        (<code>tts</code>) and a generic scale-to-zero web tenant have been
-        generalized from a single production shared-GPU cluster and evaluate
-        on their own. None of the three has been adopted back into a live
-        cluster yet &mdash; treat them as evaluated, not live-verified.</p>
+        <h3>No recipe has been adopted into a live cluster yet</h3>
+        <p>Every recipe was generalized from a system where that app
+        genuinely runs, so the knowledge in it is real &mdash; but
+        &ldquo;renders in CI&rdquo; and &ldquo;runs in production&rdquo; are
+        different claims, and this repository has only earned the first.
+        Treat everything here as evaluated, not live-verified.</p>
       </div>
       <div class="step">
         <div class="step-num">!</div>
-        <h3>Reorganization onto the recipe contract in progress</h3>
-        <p>The rules for what a recipe is and what this repository will and
-        will not contain are fixed in
-        <a href="https://github.com/julian-corbet/nixapps-corbet-ch/blob/main/CONTRACT.md">CONTRACT.md</a>.
-        Modules are being moved onto that contract's layout; a render check
-        in CI currently covers the generic web tenant against a real minimal
-        example, with the other two still to be wired in.</p>
+        <h3>39 recipes across 12 categories</h3>
+        <p>advanced, chat, data, dev, documents, files, home, media, notes,
+        office, productivity and utility &mdash; see the
+        <a href="#recipes">full breakdown</a> below. There is no central list
+        of categories anywhere in this repository: a recipe's own directory is
+        its category, so adding one is adding a directory.</p>
       </div>
       <div class="step">
         <div class="step-num">!</div>
-        <h3>The LLM serving lane graduated</h3>
-        <p>It started here, was the first thing generalized, and has since
-        moved to its own project:
-        <a href="https://nixllm.corbet.ch">nixllm</a>. LLM-consuming apps
-        still integrate the same way &mdash; a key and a model name, no GPU of
-        their own.</p>
+        <h3>Knowledge carries a default; a value never does</h3>
+        <p>A recipe ships every default that makes a stranger's deploy work
+        &mdash; the pinned image, the container port, the paths it writes
+        inside the container, the probe timings &mdash; and refuses to guess
+        the handful of things true only of one site: a namespace, a host
+        directory, the name of a Secret it will not create, a public URL.
+        Enabling a recipe with nothing else fails loudly, naming what you
+        still owe. The rules are fixed in
+        <a href="https://github.com/julian-corbet/nixapps-corbet-ch/blob/main/CONTRACT.md">CONTRACT.md</a>.</p>
       </div>
     </div>
   </div>
@@ -117,33 +122,57 @@
     <h2>The pitch</h2>
     <div class="feature-grid">
       <div class="feature">
-        <h3>Every app a module</h3>
-        <p>Typed Nix, not copy-pasted YAML: every app a module with neutral
-        defaults, every deployment a rendered, auditable manifest tree, every
-        upgrade a diff.</p>
+        <h3>Recipes, not a renderer</h3>
+        <p>Every recipe is one file of ordinary <code>lib.mkOption</code>,
+        readable top to bottom, with no shared library and no generic
+        render-any-app module to learn first. Duplication between recipes is
+        accepted on purpose: two recipes that look similar are two independent
+        statements about two different apps.</p>
       </div>
       <div class="feature">
-        <h3>LLM consumers point at nixllm</h3>
-        <p>Apps that need an LLM point at the
-        <a href="https://github.com/julian-corbet/nixllm-corbet-ch">nixllm</a>
-        front door with a key and a model name, and request no GPU of their
-        own &mdash; the serving lane started in this repo and graduated to its
-        own project.</p>
+        <h3>Capacity stays at the site</h3>
+        <p>Recipes never render replicas, resource limits, node selectors,
+        tolerations, autoscalers, or Ingress &mdash; those are one site's
+        hardware and networking decisions. These are NixOS-style modules, so a
+        consumer merges its own tuning into the same attribute path from its
+        own file.</p>
+      </div>
+      <div class="feature">
+        <h3>Checked, not just claimed</h3>
+        <p><code>nix flake check</code> renders all 39 recipes against real
+        nixidy from placeholder values in <code>examples/all/values.nix</code>.
+        That is the one mechanical check this repository makes, and nothing
+        here claims more than that.</p>
       </div>
     </div>
   </div>
 </section>
 
-<section id="roadmap" class="commands">
+<section id="recipes" class="commands">
   <div class="container">
-    <h2>Roadmap</h2>
+    <h2>Recipes by category</h2>
+    <p>The directory is the category: a recipe at <code>apps/media/castopod</code>
+    declares <code>nixapps.media.castopod</code>. There is no central list
+    anywhere in the repository &mdash; adding a category means adding a
+    directory. Start with
+    <a href="https://github.com/julian-corbet/nixapps-corbet-ch/tree/main/apps/media/castopod">media/castopod</a>,
+    the reference recipe: one Deployment, one Service, three values,
+    everything else knowledge.</p>
     <div class="table-scroll">
       <table>
         <tbody>
-          <tr><td>LLM serving (graduated)</td><td>Started here, generalized first, and moved to its own project: <a href="https://github.com/julian-corbet/nixllm-corbet-ch">nixllm</a> &mdash; self-hosted LLM serving where the model store IS the registry. See <a href="https://nixllm.corbet.ch">nixllm.corbet.ch</a>.</td></tr>
-          <tr><td>Image generation module</td><td>Generalized from the originating production cluster. Planned, not started.</td></tr>
-          <tr><td>TTS module</td><td>Generalized from the originating production cluster. Planned, not started.</td></tr>
-          <tr><td>Further tenants</td><td>Additional app modules follow as they are generalized. Planned.</td></tr>
+          <tr><td>advanced (2)</td><td><code>comfyui</code>, <code>tts</code></td></tr>
+          <tr><td>chat (2)</td><td><code>mattermost</code>, <code>tuwunel</code></td></tr>
+          <tr><td>data (1)</td><td><code>directus</code></td></tr>
+          <tr><td>dev (3)</td><td><code>bytestash</code>, <code>chartdb</code>, <code>whodb</code></td></tr>
+          <tr><td>documents (4)</td><td><code>bookstack</code>, <code>overleaf</code>, <code>paperless</code>, <code>papra</code></td></tr>
+          <tr><td>files (5)</td><td><code>nextcloud</code>, <code>opencloud</code>, <code>pingvin</code>, <code>syncthing</code>, <code>versitygw</code></td></tr>
+          <tr><td>home (3)</td><td><code>grocy</code>, <code>homarr</code>, <code>homebox</code></td></tr>
+          <tr><td>media (3)</td><td><code>castopod</code>, <code>ontime</code>, <code>tubearchivist</code></td></tr>
+          <tr><td>notes (4)</td><td><code>archivebox</code>, <code>linkwarden</code>, <code>memos</code>, <code>silverbullet</code></td></tr>
+          <tr><td>office (2)</td><td><code>collabora</code>, <code>eurooffice</code></td></tr>
+          <tr><td>productivity (5)</td><td><code>calcom</code>, <code>donetick</code>, <code>leantime</code>, <code>planka</code>, <code>vikunja</code></td></tr>
+          <tr><td>utility (5)</td><td><code>assets</code>, <code>cyberchef</code>, <code>czkawka</code>, <code>quickchart</code>, <code>rclone</code></td></tr>
         </tbody>
       </table>
     </div>

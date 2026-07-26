@@ -1,96 +1,127 @@
 # nixapps
 
-**A curated library of self-hosted application modules for a nixidy + Argo CD
-cluster — apps as typed Nix, not copy-pasted YAML.**
+**A cookbook for ordinary self-hosted applications: 39 recipes as typed Nix,
+rendered to Argo CD manifests by [nixidy](https://github.com/arnarg/nixidy).**
 
-The tenant layer of an interoperating project set: application modules that
-render through [nixidy](https://github.com/arnarg/nixidy) and deploy onto the
-spine shipped by [nixk3s](https://github.com/julian-corbet/nixk3s-corbet-ch).
-GPU-consuming apps declare the three-line contract from
-[nixgpu](https://github.com/julian-corbet/nixgpu-corbet-ch) and never think
-about the card again.
+A recipe describes one app completely enough that a stranger can deploy it, and
+configures nothing about any particular site. You pair it with a short values
+file naming the handful of things true only of your cluster.
 
-## The pitch
+## The idea
 
-Self-hosting collections exist for docker-compose and Helm. This one is for
-people who want the whole cluster in git as typed Nix: every app a module with
-neutral defaults, every deployment a rendered, auditable manifest tree, every
-upgrade a diff.
+Its value is *knowing the recipe*. That this app serves HTTP on 8080 with a web
+server already in the image. That it migrates its own database on boot, so the
+readiness probe has to be patient or a restart lands mid-migration. That its
+documented Redis dependency is only a cache and can be pointed at a file handler
+instead, removing a whole service. That it writes exactly one directory and
+everything else is in the database. That setting `fsGroup` will silently rechown
+your host directory.
 
-LLM consumers point at the
-[nixllm](https://github.com/julian-corbet/nixllm-corbet-ch) front door with a
-key and a model name, and request no GPU of their own.
+That knowledge is expensive to acquire and cheap to copy, which is the entire
+reason to publish it. The cooking happens elsewhere.
 
-## What ships
+## The split
 
-Three tenant modules have landed (`nixidyModules.<category>.<app>`; see
-[apps/README.md](apps/README.md) for the category layout):
+```nix
+# Yours — the values a recipe refuses to guess.
+nixapps.media.castopod = {
+  enable     = true;
+  namespace  = "podcast";
+  secretName = "castopod-env";
+  mediaPath  = "/srv/castopod/media";
+};
+```
 
-- **`comfyui`** ([apps/advanced/comfyui](apps/advanced/comfyui)) — the
-  flagship direct-GPU tenant: a scale-to-zero image-generation app that holds
-  the whole card while it runs, declaring the nixgpu contract
-  (`priorityClassName`, `strategy: Recreate`, a device-resource token).
-  Optional wake-front consumer labels for nixgpu's `ondemand-front`; a
-  reusable pattern for injecting a custom pre-start hook into a
-  read-only-ConfigMap-hostile image.
-- **`tts`** ([apps/advanced/tts](apps/advanced/tts)) — two independently
-  enabled Deployments sharing one namespace: `kokoro` (stock CPU-only
-  narration, always schedulable) and `chatterbox` (GPU-backed voice cloning,
-  also declaring the nixgpu contract). Neither is wake-fronted — both scale
-  0↔1 via an external operator/workflow script, the third scale-to-zero
-  pattern in this project family alongside comfyui's Sablier front and
-  `web`'s KEDA front.
-- **`web`** ([apps/generic/web](apps/generic/web)) — a generic, CPU-only,
-  list-shaped tenant module for stateless (or lightly stateful) web apps that
-  rest at zero replicas and wake on first request via the KEDA HTTP add-on.
-  Covers any number of unrelated apps with one shared
-  Deployment/Service/HTTPScaledObject shape; each list entry renders as its
-  own independent Argo application.
+Three lines of site facts. The image digest, the port, `Recreate`, the
+three-minute readiness probe, the path it writes inside the container, and the
+reasons for each all come from the recipe, because they are true wherever you run
+Castopod.
 
-The LLM serving lane started here and **graduated to its own project**:
-[nixllm](https://github.com/julian-corbet/nixllm-corbet-ch) — self-hosted
-LLM serving where the model store IS the registry.
+The rule underneath it:
 
-## Status
+| | has a default | lives in |
+|---|---|---|
+| **knowledge** — true for anyone running this app | yes | here |
+| **value** — true only for your site | **no** | your repo |
 
-**Pre-alpha.** All three modules above are generalized from a single
-production shared-GPU cluster and evaluate on their own — but — unlike the
-sibling `nixgpu`/`nixllm` projects — **none of them has been adopted back
-into a live cluster yet**; treat them as evaluated, not live-verified, until
-that happens.
+A value with a default would be a lie about portability: your deploy would build
+fine and break at runtime, instead of failing at evaluation naming what it
+needs — which is the one place it was cheap to catch.
 
-A reorganization onto the recipe contract fixed in [CONTRACT.md](CONTRACT.md)
-is in progress: modules are moving onto the `apps/<category>/<app>` layout
-that mirrors each module's own `nixapps.<category>.<app>` option path
-(CONTRACT.md R4), and a shared `lib` is absorbing the renderings that
-duplicate across recipes (R5). What is actually checked in CI today is
-render checks landing with the reorganization: `nix flake check` renders
-`examples/minimal`, a real self-contained consumer flake, through the
-`generic.web` module against the real nixidy module system it targets
-(R11). `comfyui` and `tts` are not yet wired into that check. **CONTRACT.md
-is the design authority** — it states the target this repository is being
-moved onto; this section states only what is true of the code today, and the
-two are not always the same yet.
+```
+error: The option `nixapps.media.castopod.secretName' was accessed
+       but has no value defined. Try setting the option.
+```
 
-Pending:
+## What is deliberately not here
 
-- Wire `comfyui` and `tts` into the `nix flake check` render check alongside
-  `generic.web`.
-- Live re-verification of all three modules against a real cluster.
-- Further tenants land here as they are generalized from the originating
-  production cluster.
+Recipes render no replicas, no resource limits, no node selectors, no Ingress, no
+fixed cluster addresses, and no autoscalers. Those are decisions about one site's
+hardware and network, and a cookbook has no opinion about your hardware.
+
+Nothing is lost by leaving them out. These are NixOS-style modules, so your own
+file merges your own tuning into the same attribute path:
+
+```nix
+# Your repo, not this one.
+applications.castopod.resources.deployments.castopod.spec = {
+  replicas = 2;
+  template.spec.containers.castopod.resources.limits.memory = "2Gi";
+};
+```
+
+There is also no shared helper library, on purpose. Each recipe is one file you
+can read top to bottom; two recipes that look similar are two independent
+statements about two different apps. A helper that saves a few lines but makes
+you open a second file to understand the first is a net loss here.
+
+## Layout
+
+```
+apps/<category>/<app>/default.nix     →  nixapps.<category>.<app>
+```
+
+The path is the option path, and the category is the Argo project, so the three
+cannot drift. **No central list of categories exists** — the flake discovers them
+by reading the directory, so adding a category means adding a directory.
+
+39 recipes across 12 categories — advanced, chat, data, dev, documents, files,
+home, media, notes, office, productivity, utility. The index with a one-line hook
+each is in [apps/README.md](apps/README.md); start with
+[media/castopod](apps/media/castopod), the reference recipe.
+
+## Rules
+
+[CONTRACT.md](CONTRACT.md) is the design authority — twelve rules stating what a
+recipe is, which of them CI checks and which are reviewed by a human. When a
+recipe and the contract disagree, the contract wins.
+
+## What is proven, and what is not
+
+`nix flake check` renders **all 39 recipes** against real nixidy, from the
+placeholder values in `examples/all/values.nix`. A recipe that stops evaluating,
+or grows a required value nobody supplies, fails there instead of in a cluster.
+Both directions are checked: the render passes, and removing a required value
+fails by name. `examples/minimal` is the same mechanism narrowed to one recipe,
+as a flake you can build standalone.
+
+**No recipe has been adopted into a live cluster yet.** Every one was generalized
+from a system where that app genuinely runs, so the knowledge in them is real
+rather than invented — but "renders in CI" and "runs in production" are different
+claims, and this repository has only earned the first. Treat these as evaluated,
+not live-verified.
 
 ## Related projects
 
 - [nixk3s](https://github.com/julian-corbet/nixk3s-corbet-ch) — the cluster
-  spine these modules deploy onto.
-- [nixgpu](https://github.com/julian-corbet/nixgpu-corbet-ch) — the GPU
-  sharing substrate GPU apps declare their contract against.
-- [nixllm](https://github.com/julian-corbet/nixllm-corbet-ch) — the shared
-  LLM serving lane (graduated from this repo).
-- [nixvibe](https://github.com/julian-corbet/nixvibe-corbet-ch) — a coding
-  agent in a real browser terminal; substantial enough to graduate straight
-  to its own repo rather than landing here.
+  spine these recipes deploy onto. It holds the mechanism and knows nothing about
+  what kind of apps you run.
+- [nixgpu](https://github.com/julian-corbet/nixgpu-corbet-ch) — the GPU arbiter.
+  It decides who gets a scarce card and in what order; it never uses one. The two
+  recipes here that hold a card declare its contract and implement none of it.
+- [nixllm](https://github.com/julian-corbet/nixllm-corbet-ch) — the shared LLM
+  serving lane. It started in this repository and graduated once it developed a
+  mechanism worth having independently of the app.
 
 ## License
 
