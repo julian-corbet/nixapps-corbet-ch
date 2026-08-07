@@ -8,7 +8,7 @@
 # namespace, a host directory, the name of a Secret it will not create, a public
 # URL, an identity-provider coordinate. Nothing here is real — the hostnames are
 # under example.com, the paths are under /var/lib/example, and no credential
-# appears in any form. Enabling all 39 apps at once is not a deployment anyone
+# appears in any form. Enabling all 38 apps at once is not a deployment anyone
 # would want; it is a proof that each one still renders.
 #
 # This file was generated from the recipes' own option surface: every option
@@ -326,20 +326,6 @@
   nixapps.utility.cyberchef = {
     enable = true;
     namespace = "cyberchef";
-  };
-
-  nixapps.utility.czkawka = {
-    enable = true;
-    agentsPath = "/var/lib/example/czkawka/agents";
-    audioPath = "/var/lib/example/czkawka/audio";
-    configPath = "/var/lib/example/czkawka/config";
-    exchangePath = "/var/lib/example/czkawka/exchange";
-    groupId = 1000;
-    imagesPath = "/var/lib/example/czkawka/images";
-    namespace = "czkawka";
-    officePath = "/var/lib/example/czkawka/office";
-    userId = 1000;
-    videosPath = "/var/lib/example/czkawka/videos";
   };
 
   nixapps.utility.quickchart = {

@@ -110,8 +110,6 @@ part of it (R9).
 
 - **[assets](utility/assets)** — small asset/inventory tracker.
 - **[cyberchef](utility/cyberchef)** — data-transformation workbench, stateless.
-- **[czkawka](utility/czkawka)** — duplicate finder; mounts the trees you want it
-  to compare, which is the whole configuration.
 - **[quickchart](utility/quickchart)** — chart-rendering service, stateless.
 - **[rclone](utility/rclone)** — cloud-storage bridge driven by its config file.
 

@@ -16,7 +16,7 @@ nix build
 
 [`all/`](all) holds placeholder values for **every** recipe in the
 repository, in [`all/values.nix`](all/values.nix). The root flake's own
-`nix flake check` renders all 39 recipes against these values in one pass,
+`nix flake check` renders all 38 recipes against these values in one pass,
 which is what makes R11 real for the whole repository rather than just one
 recipe: a recipe that stops evaluating, or that quietly grows a required
 value nobody supplies, fails CI instead of failing in somebody's cluster.
