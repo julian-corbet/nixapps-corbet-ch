@@ -43,7 +43,6 @@ part of it (R9).
 
 - **[bytestash](dev/bytestash)** — code-snippet store with OIDC login.
 - **[chartdb](dev/chartdb)** — database-schema visualizer; entirely stateless.
-- **[whodb](dev/whodb)** — lightweight database browser.
 
 ## documents
 

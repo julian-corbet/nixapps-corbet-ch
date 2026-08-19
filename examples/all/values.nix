@@ -101,14 +101,6 @@
     namespace = "chartdb";
   };
 
-  nixapps.dev.whodb = {
-    enable = true;
-    allowedOrigins = "example";
-    dataPath = "/var/lib/example/whodb/data";
-    namespace = "whodb";
-    secretName = "whodb-env";
-  };
-
   nixapps.documents.bookstack = {
     enable = true;
     configPath = "/var/lib/example/bookstack/config";

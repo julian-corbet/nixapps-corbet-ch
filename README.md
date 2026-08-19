@@ -1,6 +1,6 @@
 # nixapps
 
-**A cookbook for ordinary self-hosted applications: 38 recipes as typed Nix,
+**A cookbook for ordinary self-hosted applications: 37 recipes as typed Nix,
 rendered to Argo CD manifests by [nixidy](https://github.com/arnarg/nixidy).**
 
 A recipe describes one app completely enough that a stranger can deploy it, and
@@ -85,7 +85,7 @@ The path is the option path, and the category is the Argo project, so the three
 cannot drift. **No central list of categories exists** — the flake discovers them
 by reading the directory, so adding a category means adding a directory.
 
-38 recipes across 12 categories — advanced, chat, data, dev, documents, files,
+37 recipes across 12 categories — advanced, chat, data, dev, documents, files,
 home, media, notes, office, productivity, utility. The index with a one-line hook
 each is in [apps/README.md](apps/README.md); start with
 [media/castopod](apps/media/castopod), the reference recipe.
@@ -98,7 +98,7 @@ recipe and the contract disagree, the contract wins.
 
 ## What is proven, and what is not
 
-`nix flake check` renders **all 38 recipes** against real nixidy, from the
+`nix flake check` renders **all 37 recipes** against real nixidy, from the
 placeholder values in `examples/all/values.nix`. A recipe that stops evaluating,
 or grows a required value nobody supplies, fails there instead of in a cluster.
 Both directions are checked: the render passes, and removing a required value
