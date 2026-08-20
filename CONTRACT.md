@@ -143,6 +143,18 @@ row in the site's map. Graduation is a fact about this repository, not about the
 deployment. Recipes that never develop a mechanism stay here permanently, and
 that is the normal outcome.
 
+**SUPERSEDED for the whole catalogue, 2026-08.** That last sentence described a
+repository that was the only home an ordinary app had. It is not any more: every
+application is now assigned to the repository whose SUBJECT it is, and each of
+those declares its own. So the normal outcome became the opposite of the one
+stated here — all 37 recipes left, none because it developed a mechanism.
+
+The rule above is not wrong and is kept: graduation still moves CODE and never the
+app, and an app's identity — its name, its category, its address, its exposure —
+still survives the move unchanged. That is exactly what happened. What changed is
+which repository is the destination, and the answer is no longer "a cookbook" but
+"the one that owns the subject".
+
 ## Which rules are checked vs. reviewed
 
 **Mechanically checked** (`nix flake check`):

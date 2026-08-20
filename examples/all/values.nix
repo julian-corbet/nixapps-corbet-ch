@@ -20,26 +20,6 @@
   nixidy.target.branch = "main";
 
 
-  nixapps.advanced.tts = {
-    enable = true;
-    # This recipe holds two independently enabled engines, so enabling the recipe
-    # alone renders nothing but a namespace. Both are switched on here on purpose:
-    # a check that renders no workload proves nothing about the workload.
-    kokoro.enable = true;
-    chatterbox.enable = true;
-    chatterbox.arbiterLabels = {
-      "example.com/gpu-managed" = "true";
-      "example.com/gpu-engine" = "compute";
-    };
-    chatterbox.deviceResource = "example.com/gpu";
-    chatterbox.priorityClassName = "example-gpu-besteffort";
-    chatterbox.image = "registry.example.com/example/tts:1.0.0";
-    chatterbox.modelsCachePath = "/var/lib/example/tts/models-cache";
-    chatterbox.referenceAudioPath = "/var/lib/example/tts/reference-audio";
-    chatterbox.voicesPath = "/var/lib/example/tts/voices";
-    kokoro.modelsPath = "/var/lib/example/tts/models";
-    namespace = "tts";
-  };
 
 
 
@@ -56,15 +36,6 @@
 
 
 
-  nixapps.home.homarr = {
-    enable = true;
-    adminGroup = "example-admins";
-    authOidcClientId = "example-client-id";
-    authOidcIssuer = "https://homarr.example.com";
-    dataPath = "/var/lib/example/homarr/data";
-    namespace = "homarr";
-    secretName = "homarr-env";
-  };
 
 
 

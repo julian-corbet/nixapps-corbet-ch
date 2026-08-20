@@ -1,11 +1,19 @@
 # nixapps
 
-**A cookbook for ordinary self-hosted applications: 37 recipes as typed Nix,
-rendered to Argo CD manifests by [nixidy](https://github.com/arnarg/nixidy).**
+**The recipe contract, and nothing else. This repository currently holds no
+recipes.**
 
-A recipe describes one app completely enough that a stranger can deploy it, and
-configures nothing about any particular site. You pair it with a short values
-file naming the handful of things true only of your cluster.
+It was a cookbook of 37 recipes for ordinary self-hosted applications, rendered
+to Argo CD manifests by [nixidy](https://github.com/arnarg/nixidy). Every one of
+them has since been handed to the repository that owns the application: the wiki
+and the document managers to the office repository, the notebooks to the notes
+one, the archives to the vault, and so on. An app is declared by the repository
+whose subject it is, and a second description here was a duplicate nobody read.
+
+What stays is the part that was never about any one app: [CONTRACT.md](CONTRACT.md),
+the twelve rules stating what a recipe IS and where the line between knowledge and
+values falls. Those rules now govern a dozen catalogues in a dozen repositories
+instead of one directory here.
 
 ## The idea
 
@@ -85,10 +93,10 @@ The path is the option path, and the category is the Argo project, so the three
 cannot drift. **No central list of categories exists** — the flake discovers them
 by reading the directory, so adding a category means adding a directory.
 
-37 recipes across 12 categories — advanced, chat, data, dev, documents, files,
-home, media, notes, office, productivity, utility. The index with a one-line hook
-each is in [apps/README.md](apps/README.md); start with
-[media/castopod](apps/media/castopod), the reference recipe.
+`apps/` is empty. It is kept rather than deleted because the discovery mechanism
+is the directory itself, and because this repository still binds an addressing
+band for an application that has no recipe here — see the fleet's own assignment
+record for what that means.
 
 ## Rules
 
@@ -98,9 +106,15 @@ recipe and the contract disagree, the contract wins.
 
 ## What is proven, and what is not
 
-`nix flake check` renders **all 37 recipes** against real nixidy, from the
-placeholder values in `examples/all/values.nix`. A recipe that stops evaluating,
-or grows a required value nobody supplies, fails there instead of in a cluster.
+`nix flake check` renders every recipe in the repository against real nixidy,
+from the placeholder values in `examples/all/values.nix` — and with no recipes
+left it therefore renders nothing and compares nothing.
+
+**A green check here no longer means the recipes are fine; it means the shell is
+intact.** Those are easy to confuse from a tick, so `recipe-count` states the
+number out loud and fails if the count and the render ever disagree. When this
+repository held recipes, the same check proved a recipe that stopped evaluating,
+or grew a required value nobody supplied, failed here instead of in a cluster.
 Both directions are checked: the render passes, and removing a required value
 fails by name. `examples/minimal` is the same mechanism narrowed to one recipe,
 as a flake you can build standalone.
