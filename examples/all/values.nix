@@ -78,14 +78,6 @@
     wellKnownServer = "https://tuwunel.example.com";
   };
 
-  nixapps.data.directus = {
-    enable = true;
-    databasePath = "/var/lib/example/directus/database";
-    extensionsPath = "/var/lib/example/directus/extensions";
-    namespace = "directus";
-    secretName = "directus-env";
-    uploadsPath = "/var/lib/example/directus/uploads";
-  };
 
   nixapps.dev.bytestash = {
     enable = true;
@@ -96,48 +88,10 @@
     secretName = "bytestash-env";
   };
 
-  nixapps.dev.chartdb = {
-    enable = true;
-    namespace = "chartdb";
-  };
 
-  nixapps.documents.bookstack = {
-    enable = true;
-    configPath = "/var/lib/example/bookstack/config";
-    dbHost = "bookstack-db.example";
-    namespace = "bookstack";
-    pgid = 1000;
-    puid = 1000;
-    secretName = "bookstack-env";
-  };
 
-  nixapps.documents.overleaf = {
-    enable = true;
-    dataPath = "/var/lib/example/overleaf/data";
-    namespace = "overleaf";
-    secretName = "overleaf-env";
-  };
 
-  nixapps.documents.paperless = {
-    enable = true;
-    consumePath = "/var/lib/example/paperless/consume";
-    dataPath = "/var/lib/example/paperless/data";
-    emailFromAddress = "example";
-    emailHost = "paperless-db.example";
-    emailHostUser = "paperless-db.example";
-    exportPath = "/var/lib/example/paperless/export";
-    mediaPath = "/var/lib/example/paperless/media";
-    namespace = "paperless";
-    secretName = "paperless-env";
-  };
 
-  nixapps.documents.papra = {
-    enable = true;
-    appdataPath = "/var/lib/example/papra/appdata";
-    cloudsPath = "/var/lib/example/papra/clouds";
-    namespace = "papra";
-    secretName = "papra-env";
-  };
 
   nixapps.files.nextcloud = {
     enable = true;
@@ -181,11 +135,6 @@
     secretName = "versitygw-env";
   };
 
-  nixapps.home.grocy = {
-    enable = true;
-    dataPath = "/var/lib/example/grocy/data";
-    namespace = "grocy";
-  };
 
   nixapps.home.homarr = {
     enable = true;
@@ -197,12 +146,6 @@
     secretName = "homarr-env";
   };
 
-  nixapps.home.homebox = {
-    enable = true;
-    dataPath = "/var/lib/example/homebox/data";
-    namespace = "homebox";
-    secretName = "homebox-env";
-  };
 
   nixapps.media.castopod = {
     enable = true;
@@ -234,19 +177,7 @@
     namespace = "archivebox";
   };
 
-  nixapps.notes.linkwarden = {
-    enable = true;
-    dataPath = "/var/lib/example/linkwarden/data";
-    databaseHost = "linkwarden-db.example";
-    namespace = "linkwarden";
-    secretName = "linkwarden-env";
-  };
 
-  nixapps.notes.memos = {
-    enable = true;
-    dataPath = "/var/lib/example/memos/data";
-    namespace = "memos";
-  };
 
   nixapps.notes.silverbullet = {
     enable = true;
@@ -255,75 +186,19 @@
     spacePath = "/var/lib/example/silverbullet/space";
   };
 
-  nixapps.office.collabora = {
-    enable = true;
-    namespace = "collabora";
-    nextcloudAliasgroup = "https://collabora.example.com";
-    serverName = "collabora.example.com";
-  };
 
-  nixapps.office.eurooffice = {
-    enable = true;
-    dataPath = "/var/lib/example/eurooffice/data";
-    dbHost = "eurooffice-db.example";
-    identityPath = "/var/lib/example/eurooffice/identity";
-    namespace = "eurooffice";
-    secretName = "eurooffice-env";
-  };
 
-  nixapps.productivity.calcom = {
-    enable = true;
-    namespace = "calcom";
-    secretName = "calcom-env";
-  };
 
-  nixapps.productivity.donetick = {
-    enable = true;
-    configPath = "/var/lib/example/donetick/config";
-    dataPath = "/var/lib/example/donetick/data";
-    namespace = "donetick";
-  };
 
-  nixapps.productivity.leantime = {
-    enable = true;
-    dataPath = "/var/lib/example/leantime/data";
-    namespace = "leantime";
-    secretName = "leantime-env";
-  };
 
-  nixapps.productivity.planka = {
-    enable = true;
-    dataPath = "/var/lib/example/planka/data";
-    namespace = "planka";
-    postgresService = "example";
-    secretName = "planka-env";
-  };
 
-  nixapps.productivity.vikunja = {
-    enable = true;
-    dbPath = "/var/lib/example/vikunja/db";
-    filesPath = "/var/lib/example/vikunja/files";
-    namespace = "vikunja";
-    publicUrl = "https://vikunja.example.com";
-    secretName = "vikunja-env";
-  };
 
-  nixapps.utility.assets = {
-    enable = true;
-    dataPath = "/var/lib/example/assets/data";
-    namespace = "assets";
-    secretName = "assets-env";
-  };
 
   nixapps.utility.cyberchef = {
     enable = true;
     namespace = "cyberchef";
   };
 
-  nixapps.utility.quickchart = {
-    enable = true;
-    namespace = "quickchart";
-  };
 
   nixapps.utility.rclone = {
     enable = true;
