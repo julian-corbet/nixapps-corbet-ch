@@ -79,14 +79,6 @@
   };
 
 
-  nixapps.dev.bytestash = {
-    enable = true;
-    dataPath = "/var/lib/example/bytestash/data";
-    namespace = "bytestash";
-    oidcClientId = "example-client-id";
-    oidcIssuerUrl = "https://bytestash.example.com";
-    secretName = "bytestash-env";
-  };
 
 
 
@@ -194,10 +186,6 @@
 
 
 
-  nixapps.utility.cyberchef = {
-    enable = true;
-    namespace = "cyberchef";
-  };
 
 
   nixapps.utility.rclone = {
