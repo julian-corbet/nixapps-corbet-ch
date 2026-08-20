@@ -87,7 +87,6 @@ part of it (R9).
 - **[archivebox](notes/archivebox)** — web-page archiver.
 - **[linkwarden](notes/linkwarden)** — bookmark manager with page snapshots.
 - **[memos](notes/memos)** — lightweight note stream.
-- **[silverbullet](notes/silverbullet)** — Markdown-on-disk notebook.
 
 ## office
 

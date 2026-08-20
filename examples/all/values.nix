@@ -73,12 +73,6 @@
 
 
 
-  nixapps.notes.silverbullet = {
-    enable = true;
-    namespace = "silverbullet";
-    secretName = "silverbullet-env";
-    spacePath = "/var/lib/example/silverbullet/space";
-  };
 
 
 
