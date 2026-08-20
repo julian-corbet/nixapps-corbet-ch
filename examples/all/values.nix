@@ -19,22 +19,6 @@
   nixidy.target.repository = "https://example.com/example-org/example-gitops.git";
   nixidy.target.branch = "main";
 
-  nixapps.advanced.comfyui = {
-    enable = true;
-    # The arbiter contract, set here so the check renders it. An arbiter finds the
-    # pods holding the card by label selector, so a workload carrying none of its
-    # labels is invisible to it — and the keys belong to the arbiter, not the app.
-    arbiterLabels = {
-      "example.com/gpu-managed" = "true";
-      "example.com/gpu-engine" = "compute";
-    };
-    deviceResource = "example.com/gpu";
-    priorityClassName = "example-gpu-interactive";
-    imagesPath = "/var/lib/example/comfyui/images";
-    modelsPath = "/var/lib/example/comfyui/models";
-    namespace = "comfyui";
-    rootPath = "/var/lib/example/comfyui/root";
-  };
 
   nixapps.advanced.tts = {
     enable = true;
@@ -57,26 +41,6 @@
     namespace = "tts";
   };
 
-  nixapps.chat.mattermost = {
-    enable = true;
-    dataPath = "/var/lib/example/mattermost/data";
-    dbHost = "mattermost-db.example";
-    namespace = "mattermost";
-    secretName = "mattermost-env";
-  };
-
-  nixapps.chat.tuwunel = {
-    enable = true;
-    dataPath = "/var/lib/example/tuwunel/data";
-    ldapBaseDn = "ou=people,dc=example,dc=com";
-    ldapBindDn = "cn=service,dc=example,dc=com";
-    ldapUri = "ldap://directory.example:389";
-    namespace = "tuwunel";
-    secretName = "tuwunel-env";
-    serverName = "tuwunel.example.com";
-    wellKnownClient = "https://tuwunel.example.com";
-    wellKnownServer = "https://tuwunel.example.com";
-  };
 
 
 
@@ -85,47 +49,11 @@
 
 
 
-  nixapps.files.nextcloud = {
-    enable = true;
-    dataPath = "/var/lib/example/nextcloud/data";
-    databaseHost = "nextcloud-db.example";
-    htmlPath = "/var/lib/example/nextcloud/html";
-    namespace = "nextcloud";
-    secretName = "nextcloud-env";
-  };
 
-  nixapps.files.opencloud = {
-    enable = true;
-    namespace = "opencloud";
-    oidcClientId = "example-client-id";
-    oidcIssuer = "https://opencloud.example.com";
-    oidcMetadataUrl = "https://opencloud.example.com";
-    publicDomain = "opencloud.example.com";
-    publicUrl = "https://opencloud.example.com";
-    statePath = "/var/lib/example/opencloud/state";
-    userfilesPath = "/var/lib/example/opencloud/userfiles";
-  };
 
-  nixapps.files.pingvin = {
-    enable = true;
-    dataPath = "/var/lib/example/pingvin/data";
-    namespace = "pingvin";
-  };
 
-  nixapps.files.syncthing = {
-    enable = true;
-    configClaimName = "syncthing-config";
-    dataPath = "/var/lib/example/syncthing/data";
-    namespace = "syncthing";
-  };
 
-  nixapps.files.versitygw = {
-    enable = true;
-    dataPath = "/var/lib/example/versitygw/data";
-    iamPath = "/var/lib/example/versitygw/iam";
-    namespace = "versitygw";
-    secretName = "versitygw-env";
-  };
+
 
 
   nixapps.home.homarr = {
@@ -139,35 +67,9 @@
   };
 
 
-  nixapps.media.castopod = {
-    enable = true;
-    mediaPath = "/var/lib/example/castopod/media";
-    namespace = "castopod";
-    secretName = "castopod-env";
-  };
 
-  nixapps.media.ontime = {
-    enable = true;
-    dataPath = "/var/lib/example/ontime/data";
-    namespace = "ontime";
-  };
 
-  nixapps.media.tubearchivist = {
-    enable = true;
-    cachePath = "/var/lib/example/tubearchivist/cache";
-    elasticsearchDataPath = "/var/lib/example/tubearchivist/elasticsearch-data";
-    mediaPath = "/var/lib/example/tubearchivist/media";
-    namespace = "tubearchivist";
-    redisDataPath = "/var/lib/example/tubearchivist/redis-data";
-    secretName = "tubearchivist-env";
-  };
 
-  nixapps.notes.archivebox = {
-    enable = true;
-    archivePath = "/var/lib/example/archivebox/archive";
-    indexPath = "/var/lib/example/archivebox/index";
-    namespace = "archivebox";
-  };
 
 
 
@@ -188,10 +90,4 @@
 
 
 
-  nixapps.utility.rclone = {
-    enable = true;
-    configPath = "/var/lib/example/rclone/config";
-    namespace = "rclone";
-    secretName = "rclone-env";
-  };
 }
