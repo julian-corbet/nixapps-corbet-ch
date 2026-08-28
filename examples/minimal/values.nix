@@ -20,12 +20,10 @@
     webImage = "registry.example.com/naming-web:1@sha256:0000000000000000000000000000000000000000000000000000000000000000";
     apiImage = "registry.example.com/naming-api:1@sha256:1111111111111111111111111111111111111111111111111111111111111111";
     workerImage = "registry.example.com/naming-worker:1@sha256:2222222222222222222222222222222222222222222222222222222222222222";
-    databaseImage = "registry.example.com/postgres:17@sha256:3333333333333333333333333333333333333333333333333333333333333333";
-    databasePath = "/example/data/naming";
+    databaseHost = "postgres.database.svc.cluster.local";
     databaseSecretName = "example-naming-database";
     webSlot = 161;
     apiSlot = 162;
-    databaseSlot = 163;
     llmBaseUrl = "http://llm.example-naming.svc.cluster.local:4000";
   };
 }

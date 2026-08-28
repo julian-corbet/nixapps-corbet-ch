@@ -1,5 +1,6 @@
 # naming — interactive name-space exploration with a private web front,
-# control API, queue consumer, and dedicated PostgreSQL store.
+# control API, and private queue consumer. PostgreSQL is supplied by the
+# deployment; this recipe deliberately does not create a database server.
 #
 # This module declares application needs through nixk3s.apps. It renders no
 # Kubernetes resources itself. Addresses, paths, images, credentials, sizing,
@@ -7,9 +8,8 @@
 { config, lib, ... }:
 let
   cfg = config.nixapps.apps.naming;
-  databaseHost = "naming-db.${cfg.namespace}.svc.cluster.local";
   databaseEnv = {
-    NAMING_DATABASE_HOST = databaseHost;
+    NAMING_DATABASE_HOST = cfg.databaseHost;
     NAMING_DATABASE_PORT = "5432";
     NAMING_DATABASE_NAME = cfg.databaseName;
     NAMING_DATABASE_USER = cfg.databaseUser;
@@ -43,14 +43,9 @@ in
       description = "Digest-pinned image for the private Rust worker.";
     };
 
-    databaseImage = lib.mkOption {
+    databaseHost = lib.mkOption {
       type = lib.types.str;
-      description = "Digest-pinned PostgreSQL image.";
-    };
-
-    databasePath = lib.mkOption {
-      type = lib.types.str;
-      description = "Host path backing the dedicated PostgreSQL data directory.";
+      description = "DNS name of an existing PostgreSQL service.";
     };
 
     databaseSecretName = lib.mkOption {
@@ -84,11 +79,6 @@ in
     apiSlot = lib.mkOption {
       type = lib.types.ints.between 1 254;
       description = "Address slot for the internal API service.";
-    };
-
-    databaseSlot = lib.mkOption {
-      type = lib.types.ints.between 1 254;
-      description = "Address slot for the internal PostgreSQL service.";
     };
 
     llmBaseUrl = lib.mkOption {
@@ -185,56 +175,6 @@ in
         state.runtime = {
           emptyDir = true;
           mountPath = "/tmp";
-        };
-      };
-
-      naming-db = {
-        namespace = cfg.namespace;
-        origin = "nixapps";
-        slot = cfg.databaseSlot;
-        image = cfg.databaseImage;
-        identity = "naming-postgres";
-        args = [
-          "postgres"
-          "-c"
-          "unix_socket_directories=/tmp"
-        ];
-        exposure = "internal";
-        singleWriter = true;
-        ports.postgresql.number = 5432;
-        env = {
-          POSTGRES_DB = cfg.databaseName;
-          POSTGRES_USER = cfg.databaseUser;
-          PGDATA = "/var/lib/postgresql/data/pgdata";
-        };
-        secrets.database = {
-          secret = cfg.databaseSecretName;
-          env.POSTGRES_PASSWORD = cfg.databasePasswordKey;
-        };
-        probes.readiness = {
-          port = "postgresql";
-          path = null;
-          failureThreshold = 12;
-        };
-        probes.liveness = {
-          port = "postgresql";
-          path = null;
-          periodSeconds = 30;
-          failureThreshold = 6;
-        };
-        state.data = {
-          hostPath = cfg.databasePath;
-          mountPath = "/var/lib/postgresql/data";
-        };
-        state.runtime = {
-          emptyDir = true;
-          mountPath = "/tmp";
-        };
-        security = {
-          runAsNonRoot = true;
-          seccomp = "RuntimeDefault";
-          allowPrivilegeEscalation = false;
-          capabilitiesDrop = [ "ALL" ];
         };
       };
     };
