@@ -160,6 +160,7 @@ in
         namespace = cfg.namespace;
         origin = "nixapps";
         image = cfg.workerImage;
+        scaling = "scale-to-zero";
         env = databaseEnv // {
           NAMING_LLM_BASE_URL = cfg.llmBaseUrl;
           NAMING_WORKER_POLL_SECONDS = "10";
