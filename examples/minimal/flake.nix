@@ -28,11 +28,11 @@
       nixidyEnvs = forAllSystems (system: nixidy.lib.mkEnvs {
         pkgs = nixpkgs.legacyPackages.${system};
         envs.example.modules = [
-          # The EXISTING recipe, imported unchanged, through a nested
+          # The existing recipe, imported unchanged, through a nested
           # `nixidyModules.<category>.<app>` attribute path that mirrors
-          # `apps/media/castopod` (see the root flake's comment on
+          # `apps/apps/naming` (see the root flake's comment on
           # `nixidyModules` for why this nests one level).
-          nixapps.nixidyModules.media.castopod
+          nixapps.nixidyModules.apps.naming
           ./values.nix
         ];
       });

@@ -18,10 +18,10 @@
 
   # The reference recipe. These are exactly the facts it refuses to guess;
   # remove any one of them and the render fails naming what is missing.
-  nixapps.media.castopod = {
+  nixapps.apps.naming = {
     enable = true;
-    namespace = "podcast";
-    secretName = "castopod-env";
-    mediaPath = "/var/lib/example/castopod/media";
+    namespace = "example-naming";
+    siteConfigMapName = "example-naming-site";
+    nginxConfigMapName = "example-naming-nginx";
   };
 }

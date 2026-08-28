@@ -49,15 +49,8 @@
       # a self-contained flake a stranger can build standalone to see the
       # smallest real usage.
       #
-      # # ⚠ THIS CHECK IS CURRENTLY VACUOUS, AND SAYING SO IS THE POINT. The
-      # repository holds NO recipes: every one was handed to the repository that
-      # ASSIGNMENTS §2 names as its owner. So `allRecipes` is empty, the
-      # environment renders nothing but its own `apps` directory, and the build
-      # succeeds having compared nothing at all.
-      #
-      # That is a correct result and a worthless one, and the two are easy to
-      # confuse from a green tick. `recipe-count` states the number out loud and
-      # fails if the count and the render disagree.
+      # `recipe-count` states both sides out loud so a green render cannot hide a
+      # recipe that discovery skipped or an unexpected application directory.
       checks = forAllSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
@@ -74,8 +67,8 @@
           # Building the environment package forces the whole manifest tree.
           all-recipes-render = env.environmentPackage;
 
-          # The number, stated out loud, so a green tick cannot be mistaken for
-          # coverage the repository no longer has.
+          # The number, stated out loud, so discovery and rendering are checked
+          # against each other rather than inferred from one green derivation.
           recipe-count = pkgs.runCommand "nixapps-recipe-count"
             { rendered = env.environmentPackage; } ''
             set -euo pipefail
@@ -86,12 +79,6 @@
             if [ "$declared" -ne "$rendered" ]; then
               echo "the repository declares $declared recipes and renders $rendered" >&2
               exit 1
-            fi
-            if [ "$declared" -eq 0 ]; then
-              echo
-              echo "NOTE: this repository holds no recipes, so the render check above compared"
-              echo "nothing. A green suite here means the shell is intact, never that a recipe"
-              echo "works. Every recipe now lives with the repository that owns its app."
             fi
             touch $out
           '';
