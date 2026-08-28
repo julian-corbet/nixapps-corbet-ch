@@ -231,6 +231,7 @@ in
           mountPath = "/tmp";
         };
         security = {
+          runAsNonRoot = true;
           seccomp = "RuntimeDefault";
           allowPrivilegeEscalation = false;
           capabilitiesDrop = [ "ALL" ];
