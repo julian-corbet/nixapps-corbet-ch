@@ -126,6 +126,29 @@
         "type": "github"
       }
     },
+    "nixk3s": {
+      "inputs": {
+        "nixidy": [
+          "nixidy"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1787694106,
+        "narHash": "sha256-NW4dAR9b+XhBJBz5d+0jIgWepDO7FP2N+PUey67SK3I=",
+        "owner": "julian-corbet",
+        "repo": "nixk3s-corbet-ch",
+        "rev": "5027e22ab434212f9a117d009ebedac523eda28b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "julian-corbet",
+        "repo": "nixk3s-corbet-ch",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1784796856,
@@ -162,6 +185,7 @@
       "inputs": {
         "nixapps": "nixapps",
         "nixidy": "nixidy_2",
+        "nixk3s": "nixk3s",
         "nixpkgs": "nixpkgs_2"
       }
     },

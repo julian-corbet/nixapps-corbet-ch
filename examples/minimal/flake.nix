@@ -6,15 +6,26 @@
 
     # The repository this example lives in, unmodified — proving the recipe
     # renders from nixapps alone (CONTRACT.md R11).
-    nixapps.url = "path:../..";
+    nixapps = {
+      url = "path:../..";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixidy.follows = "nixidy";
+      inputs.nixk3s.follows = "nixk3s";
+    };
 
     nixidy = {
       url = "github:arnarg/nixidy";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    nixk3s = {
+      url = "github:julian-corbet/nixk3s-corbet-ch";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixidy.follows = "nixidy";
+    };
   };
 
-  outputs = { self, nixpkgs, nixapps, nixidy }:
+  outputs = { self, nixpkgs, nixapps, nixidy, nixk3s }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems f;
@@ -28,6 +39,9 @@
       nixidyEnvs = forAllSystems (system: nixidy.lib.mkEnvs {
         pkgs = nixpkgs.legacyPackages.${system};
         envs.example.modules = [
+          nixk3s.nixidyModules.tenancy
+          nixk3s.nixidyModules.apps
+          nixk3s.nixidyModules.addressing
           # The existing recipe, imported unchanged, through a nested
           # `nixidyModules.<category>.<app>` attribute path that mirrors
           # `apps/apps/naming` (see the root flake's comment on

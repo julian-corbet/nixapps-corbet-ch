@@ -1,27 +1,31 @@
-# The "values" half of the split CONTRACT.md describes (R1/R2): every field
-# below is a FACT ABOUT ONE SITE, never knowledge about the app — which is why
-# the recipes carry no default for any of them.
-#
-# Everything here is a generic placeholder. No real hostname, no private
-# address, no host path from anybody's cluster. Swap them for your own site's
-# facts and this renders your own apps.
-#
-# Shared by two consumers so there is exactly one copy of "what this example
-# renders": examples/minimal/flake.nix (a self-contained flake anyone can build
-# standalone) and the root flake's `checks` output, so `nix flake check` at the
-# repo root does the same real rendering work.
 {
-  # Required by the nixidy ENVIRONMENT, not by any recipe here — a nixidy env
-  # cannot render without knowing where it would commit to.
   nixidy.target.repository = "https://example.com/example-org/example-gitops.git";
   nixidy.target.branch = "main";
 
-  # The reference recipe. These are exactly the facts it refuses to guess;
-  # remove any one of them and the render fails naming what is missing.
+  nixk3s.tenancy.projects.apps.destinationNamespaces = [ "example-naming" ];
+  nixk3s.appPlatform.hostPathNodeSelector."kubernetes.io/hostname" = "example-node";
+  nixk3s.addressing = {
+    enable = true;
+    bands.apps = {
+      base = 160;
+      size = 16;
+      description = "ordinary applications";
+    };
+    bindings.nixapps = "apps";
+  };
+
   nixapps.apps.naming = {
     enable = true;
     namespace = "example-naming";
-    siteConfigMapName = "example-naming-site";
-    nginxConfigMapName = "example-naming-nginx";
+    webImage = "registry.example.com/naming-web:1@sha256:0000000000000000000000000000000000000000000000000000000000000000";
+    apiImage = "registry.example.com/naming-api:1@sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    workerImage = "registry.example.com/naming-worker:1@sha256:2222222222222222222222222222222222222222222222222222222222222222";
+    databaseImage = "registry.example.com/postgres:17@sha256:3333333333333333333333333333333333333333333333333333333333333333";
+    databasePath = "/example/data/naming";
+    databaseSecretName = "example-naming-database";
+    webSlot = 161;
+    apiSlot = 162;
+    databaseSlot = 163;
+    llmBaseUrl = "http://llm.example-naming.svc.cluster.local:4000";
   };
 }

@@ -11,9 +11,15 @@
       url = "github:arnarg/nixidy";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    nixk3s = {
+      url = "github:julian-corbet/nixk3s-corbet-ch";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixidy.follows = "nixidy";
+    };
   };
 
-  outputs = { self, nixpkgs, nixidy }:
+  outputs = { self, nixpkgs, nixidy, nixk3s }:
     let
       lib = nixpkgs.lib;
       systems = [ "x86_64-linux" "aarch64-linux" ];
@@ -59,7 +65,11 @@
             categories;
           env = nixidy.lib.mkEnv {
             inherit pkgs;
-            modules = allRecipes ++ [ ./examples/all/values.nix ];
+            modules = [
+              nixk3s.nixidyModules.tenancy
+              nixk3s.nixidyModules.apps
+              nixk3s.nixidyModules.addressing
+            ] ++ allRecipes ++ [ ./examples/all/values.nix ];
           };
           count = lib.length allRecipes;
         in
@@ -67,17 +77,17 @@
           # Building the environment package forces the whole manifest tree.
           all-recipes-render = env.environmentPackage;
 
-          # The number, stated out loud, so discovery and rendering are checked
-          # against each other rather than inferred from one green derivation.
+          # Every discovered recipe must render at least one workload. A recipe
+          # may deliberately expand into several applications, as naming does.
           recipe-count = pkgs.runCommand "nixapps-recipe-count"
             { rendered = env.environmentPackage; } ''
             set -euo pipefail
             declared=${toString count}
             rendered=$(find -L "$rendered" -mindepth 1 -maxdepth 1 -type d ! -name apps | wc -l)
             echo "recipes declared: $declared"
-            echo "recipes rendered: $rendered"
-            if [ "$declared" -ne "$rendered" ]; then
-              echo "the repository declares $declared recipes and renders $rendered" >&2
+            echo "workloads rendered: $rendered"
+            if [ "$rendered" -lt "$declared" ]; then
+              echo "the repository declares $declared recipes but renders only $rendered workloads" >&2
               exit 1
             fi
             touch $out
