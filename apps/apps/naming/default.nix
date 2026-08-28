@@ -193,6 +193,7 @@ in
         origin = "nixapps";
         slot = cfg.databaseSlot;
         image = cfg.databaseImage;
+        identity = "naming-postgres";
         exposure = "internal";
         singleWriter = true;
         ports.postgresql.number = 5432;
@@ -219,6 +220,11 @@ in
         state.data = {
           hostPath = cfg.databasePath;
           mountPath = "/var/lib/postgresql/data";
+        };
+        state.postgresql-run = {
+          emptyDir = true;
+          mountPath = "/var/run/postgresql";
+          ownership = "kubelet";
         };
         security = {
           seccomp = "RuntimeDefault";
