@@ -194,6 +194,11 @@ in
         slot = cfg.databaseSlot;
         image = cfg.databaseImage;
         identity = "naming-postgres";
+        args = [
+          "postgres"
+          "-c"
+          "unix_socket_directories=/tmp"
+        ];
         exposure = "internal";
         singleWriter = true;
         ports.postgresql.number = 5432;
@@ -221,10 +226,9 @@ in
           hostPath = cfg.databasePath;
           mountPath = "/var/lib/postgresql/data";
         };
-        state.postgresql-run = {
+        state.runtime = {
           emptyDir = true;
-          mountPath = "/var/run/postgresql";
-          ownership = "kubelet";
+          mountPath = "/tmp";
         };
         security = {
           seccomp = "RuntimeDefault";
