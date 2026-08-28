@@ -18,6 +18,10 @@ let
     secret = cfg.databaseSecretName;
     env.NAMING_DATABASE_PASSWORD = cfg.databasePasswordKey;
   };
+  llmSecret = {
+    secret = cfg.llmSecretName;
+    env.NAMING_LLM_API_KEY = cfg.llmApiKeyKey;
+  };
 in
 {
   options.nixapps.apps.naming = {
@@ -85,6 +89,25 @@ in
       type = lib.types.str;
       description = "Internal OpenAI-compatible endpoint used for local LLM enrichment.";
     };
+
+    llmModel = lib.mkOption {
+      type = lib.types.str;
+      description = "Model ID exposed by the internal LLM serving door for structured planning.";
+    };
+
+    llmSecretName = lib.mkOption {
+      type = lib.types.str;
+      description = ''
+        Existing Secret containing an application-scoped LLM API key. Never point this at a
+        cluster-wide proxy master key.
+      '';
+    };
+
+    llmApiKeyKey = lib.mkOption {
+      type = lib.types.str;
+      default = "api-key";
+      description = "Key in llmSecretName containing the application-scoped LLM API key.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -130,17 +153,15 @@ in
         image = cfg.apiImage;
         exposure = "internal";
         ports.http.number = 8000;
-        env = databaseEnv // {
-          NAMING_LLM_BASE_URL = cfg.llmBaseUrl;
-        };
+        env = databaseEnv // { NAMING_MAX_ACTIVE_RUNS = "100"; };
         secrets.database = databaseSecret;
         probes.readiness = {
           port = "http";
-          path = "/healthz";
+          path = "/readyz";
         };
         probes.liveness = {
           port = "http";
-          path = "/healthz";
+          path = "/livez";
           periodSeconds = 30;
         };
         security = {
@@ -163,9 +184,16 @@ in
         scaling = "scale-to-zero";
         env = databaseEnv // {
           NAMING_LLM_BASE_URL = cfg.llmBaseUrl;
+          NAMING_LLM_MODEL = cfg.llmModel;
+          NAMING_LLM_TIMEOUT_SECONDS = "180";
           NAMING_WORKER_POLL_SECONDS = "10";
+          NAMING_WORKER_LEASE_SECONDS = "300";
+          NAMING_WORKER_MAX_ATTEMPTS = "3";
         };
-        secrets.database = databaseSecret;
+        secrets = {
+          database = databaseSecret;
+          llm = llmSecret;
+        };
         security = {
           runAsNonRoot = true;
           seccomp = "RuntimeDefault";

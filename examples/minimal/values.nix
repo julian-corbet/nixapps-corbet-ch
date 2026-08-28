@@ -25,5 +25,7 @@
     webSlot = 161;
     apiSlot = 162;
     llmBaseUrl = "http://llm.example-naming.svc.cluster.local:4000";
+    llmModel = "example-chat-model";
+    llmSecretName = "example-naming-llm";
   };
 }
