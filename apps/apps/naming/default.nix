@@ -108,6 +108,16 @@ in
       default = "api-key";
       description = "Key in llmSecretName containing the application-scoped LLM API key.";
     };
+
+    llmTimeoutSeconds = lib.mkOption {
+      type = lib.types.ints.between 1 1800;
+      default = 960;
+      description = ''
+        End-to-end planner request timeout. Keep this above the local serving chain's cold-load
+        and provider timeout so a client cancellation cannot leave an inference occupying the
+        scoped key while the queue burns through retries.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -185,7 +195,7 @@ in
         env = databaseEnv // {
           NAMING_LLM_BASE_URL = cfg.llmBaseUrl;
           NAMING_LLM_MODEL = cfg.llmModel;
-          NAMING_LLM_TIMEOUT_SECONDS = "180";
+          NAMING_LLM_TIMEOUT_SECONDS = toString cfg.llmTimeoutSeconds;
           NAMING_WORKER_POLL_SECONDS = "10";
           NAMING_WORKER_LEASE_SECONDS = "300";
           NAMING_WORKER_MAX_ATTEMPTS = "3";
