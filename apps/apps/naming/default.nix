@@ -111,11 +111,12 @@ in
 
     llmTimeoutSeconds = lib.mkOption {
       type = lib.types.ints.between 1 1800;
-      default = 960;
+      default = 180;
       description = ''
-        End-to-end planner request timeout. Keep this above the local serving chain's cold-load
-        and provider timeout so a client cancellation cannot leave an inference occupying the
-        scoped key while the queue burns through retries.
+        End-to-end client deadline for the required planner. Keep it above measured cold-load plus
+        generation time, but bounded so one inference cannot hold the queue indefinitely. The
+        serving gateway must separately propagate cancellation or enforce its own shorter deadline;
+        this client timeout is not an inference reaper.
       '';
     };
   };
