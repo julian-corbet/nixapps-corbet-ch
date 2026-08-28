@@ -99,7 +99,7 @@ in
 
   config = lib.mkIf cfg.enable {
     nixk3s.apps = {
-      naming-web = {
+      naming = {
         namespace = cfg.namespace;
         createNamespace = true;
         origin = "nixapps";
