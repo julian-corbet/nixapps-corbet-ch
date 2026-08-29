@@ -119,6 +119,15 @@ in
         this client timeout is not an inference reaper.
       '';
     };
+
+    maxNetworkChecks = lib.mkOption {
+      type = lib.types.ints.between 1 5000;
+      default = 300;
+      description = ''
+        Hard per-run ceiling for exact external registry requests after database and snapshot
+        resolution. Requests for one candidate may run concurrently, but this budget is global.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -200,6 +209,7 @@ in
           NAMING_WORKER_POLL_SECONDS = "10";
           NAMING_WORKER_LEASE_SECONDS = "300";
           NAMING_WORKER_MAX_ATTEMPTS = "3";
+          NAMING_MAX_NETWORK_CHECKS = toString cfg.maxNetworkChecks;
         };
         secrets = {
           database = databaseSecret;
