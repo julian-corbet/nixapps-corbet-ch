@@ -177,8 +177,16 @@ in
         image = cfg.apiImage;
         exposure = "internal";
         ports.http.number = 8000;
-        env = databaseEnv // { NAMING_MAX_ACTIVE_RUNS = toString cfg.maxActiveRuns; };
-        secrets.database = databaseSecret;
+        env = databaseEnv // {
+          NAMING_MAX_ACTIVE_RUNS = toString cfg.maxActiveRuns;
+          NAMING_LLM_BASE_URL = cfg.llmBaseUrl;
+          NAMING_LLM_MODEL = cfg.llmModel;
+          NAMING_LLM_TIMEOUT_SECONDS = toString cfg.llmTimeoutSeconds;
+        };
+        secrets = {
+          database = databaseSecret;
+          llm = llmSecret;
+        };
         probes.readiness = {
           port = "http";
           path = "/readyz";
