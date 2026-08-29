@@ -131,12 +131,15 @@ in
     runTimeoutSeconds = lib.mkOption {
       type = lib.types.ints.between 60 7200;
       default = 900;
-      description = "Whole-run deadline including planning, registry checks, and judging.";
+      description = ''
+        Deadline for one claimed background work item. Evidence collection and model judging are
+        separate durable work items, so a judging retry cannot consume the registry-check budget.
+      '';
     };
 
     maxActiveRuns = lib.mkOption {
       type = lib.types.ints.between 1 1000;
-      description = "Maximum number of queued or running searches accepted by the control plane.";
+      description = "Maximum number of queued or running search-evidence jobs accepted by the control plane.";
     };
   };
 
