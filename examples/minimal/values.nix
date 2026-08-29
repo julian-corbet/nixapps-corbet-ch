@@ -27,5 +27,7 @@
     llmBaseUrl = "http://llm.example-naming.svc.cluster.local:4000";
     llmModel = "example-chat-model";
     llmSecretName = "example-naming-llm";
+    maxActiveRuns = 10;
+    maxNetworkChecks = 100;
   };
 }

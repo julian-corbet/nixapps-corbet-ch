@@ -122,11 +122,15 @@ in
 
     maxNetworkChecks = lib.mkOption {
       type = lib.types.ints.between 1 5000;
-      default = 300;
       description = ''
         Hard per-run ceiling for exact external registry requests after database and snapshot
         resolution. Requests for one candidate may run concurrently, but this budget is global.
       '';
+    };
+
+    maxActiveRuns = lib.mkOption {
+      type = lib.types.ints.between 1 1000;
+      description = "Maximum number of queued or running searches accepted by the control plane.";
     };
   };
 
@@ -173,7 +177,7 @@ in
         image = cfg.apiImage;
         exposure = "internal";
         ports.http.number = 8000;
-        env = databaseEnv // { NAMING_MAX_ACTIVE_RUNS = "100"; };
+        env = databaseEnv // { NAMING_MAX_ACTIVE_RUNS = toString cfg.maxActiveRuns; };
         secrets.database = databaseSecret;
         probes.readiness = {
           port = "http";
