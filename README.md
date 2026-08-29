@@ -92,9 +92,11 @@ The path is the option path, and the category is the Argo project, so the three
 cannot drift. **No central list of categories exists** — the flake discovers them
 by reading the directory, so adding a category means adding a directory.
 
-`apps/apps/naming/` is the current recipe. It declares the portable web/API/worker
-needs for the Naming product; deployment values and every private address remain
-in the consuming repository.
+`apps/apps/naming/` is the current recipe. It declares the portable web/API plus
+portless search, snapshot-indexing, and fresh-verification workers for the Naming
+product; deployment values and every private address remain in the consuming
+repository. Consumers resolve its `naming-web` and `naming-runtime` identity roles
+to the numeric users carried by the images.
 
 ## Rules
 

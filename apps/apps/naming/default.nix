@@ -1,6 +1,7 @@
 # naming — interactive name-space exploration with a private web front,
-# control API, and private queue consumer. PostgreSQL is supplied by the
-# deployment; this recipe deliberately does not create a database server.
+# control API, and private queue consumers for searches, immutable snapshot
+# publication, and fresh verification. PostgreSQL is supplied by the deployment;
+# this recipe deliberately does not create a database server.
 #
 # This module declares application needs through nixk3s.apps. It renders no
 # Kubernetes resources itself. Addresses, paths, images, credentials, sizing,
@@ -21,6 +22,10 @@ let
   llmSecret = {
     secret = cfg.llmSecretName;
     env.NAMING_LLM_API_KEY = cfg.llmApiKeyKey;
+  };
+  githubSecret = {
+    secret = cfg.githubTokenSecretName;
+    env.NAMING_GITHUB_TOKEN = cfg.githubTokenKey;
   };
 in
 {
@@ -44,7 +49,32 @@ in
 
     workerImage = lib.mkOption {
       type = lib.types.str;
-      description = "Digest-pinned image for the private Rust worker.";
+      description = "Digest-pinned image shared by the private Rust queue roles.";
+    };
+
+    snapshotClaimName = lib.mkOption {
+      type = lib.types.str;
+      description = ''
+        Existing claim holding content-addressed registry indexes. The search worker mounts it
+        read-only; only the indexer publishes new immutable files.
+      '';
+    };
+
+    githubTokenSecretName = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Optional existing Secret containing a least-privilege GitHub token. When present, network
+        workers can observe private owner resources and the indexer can publish a complete,
+        authenticated owner-repository snapshot. Its presence also enables that snapshot schedule;
+        the API sees only the capability flag, never the token content.
+      '';
+    };
+
+    githubTokenKey = lib.mkOption {
+      type = lib.types.str;
+      default = "token";
+      description = "Key in githubTokenSecretName containing the GitHub token.";
     };
 
     databaseHost = lib.mkOption {
@@ -149,6 +179,7 @@ in
         namespace = cfg.namespace;
         createNamespace = true;
         origin = "nixapps";
+        identity = "naming-web";
         slot = cfg.webSlot;
         image = cfg.webImage;
         exposure = "nb";
@@ -182,11 +213,14 @@ in
       naming-api = {
         namespace = cfg.namespace;
         origin = "nixapps";
+        identity = "naming-runtime";
         slot = cfg.apiSlot;
         image = cfg.apiImage;
         exposure = "internal";
         ports.http.number = 8000;
         env = databaseEnv // {
+          NAMING_MAINTENANCE_INTERVAL_SECONDS = "3600";
+          NAMING_GITHUB_INVENTORY_ENABLED = if cfg.githubTokenSecretName != null then "true" else "false";
           NAMING_MAX_ACTIVE_RUNS = toString cfg.maxActiveRuns;
           NAMING_LLM_BASE_URL = cfg.llmBaseUrl;
           NAMING_LLM_MODEL = cfg.llmModel;
@@ -221,6 +255,7 @@ in
       naming-worker = {
         namespace = cfg.namespace;
         origin = "nixapps";
+        identity = "naming-runtime";
         image = cfg.workerImage;
         scaling = "scale-to-zero";
         env = databaseEnv // {
@@ -232,10 +267,93 @@ in
           NAMING_WORKER_MAX_ATTEMPTS = "3";
           NAMING_MAX_NETWORK_CHECKS = toString cfg.maxNetworkChecks;
           NAMING_RUN_TIMEOUT_SECONDS = toString cfg.runTimeoutSeconds;
+          NAMING_SNAPSHOT_ROOT = "/var/lib/naming/indexes";
         };
         secrets = {
           database = databaseSecret;
           llm = llmSecret;
+        }
+        // lib.optionalAttrs (cfg.githubTokenSecretName != null) {
+          github = githubSecret;
+        };
+        security = {
+          runAsNonRoot = true;
+          seccomp = "RuntimeDefault";
+          allowPrivilegeEscalation = false;
+          readOnlyRootFilesystem = true;
+          capabilitiesDrop = [ "ALL" ];
+        };
+        state = {
+          indexes = {
+            claim = cfg.snapshotClaimName;
+            mountPath = "/var/lib/naming/indexes";
+            readOnly = true;
+          };
+          runtime = {
+            emptyDir = true;
+            mountPath = "/tmp";
+          };
+        };
+      };
+
+      naming-indexer = {
+        namespace = cfg.namespace;
+        origin = "nixapps";
+        identity = "naming-runtime";
+        image = cfg.workerImage;
+        command = [ "/usr/local/bin/index-worker" ];
+        scaling = "scale-to-zero";
+        env = databaseEnv // {
+          NAMING_INDEXER_POLL_SECONDS = "10";
+          NAMING_INDEXER_LEASE_SECONDS = "300";
+          NAMING_INDEXER_MAX_ATTEMPTS = "3";
+          NAMING_INDEXER_TIMEOUT_SECONDS = "3600";
+          NAMING_SNAPSHOT_ROOT = "/var/lib/naming/indexes";
+          TMPDIR = "/tmp";
+        };
+        secrets = {
+          database = databaseSecret;
+        }
+        // lib.optionalAttrs (cfg.githubTokenSecretName != null) {
+          github = githubSecret;
+        };
+        security = {
+          runAsNonRoot = true;
+          seccomp = "RuntimeDefault";
+          allowPrivilegeEscalation = false;
+          readOnlyRootFilesystem = true;
+          capabilitiesDrop = [ "ALL" ];
+        };
+        state = {
+          indexes = {
+            claim = cfg.snapshotClaimName;
+            mountPath = "/var/lib/naming/indexes";
+          };
+          runtime = {
+            emptyDir = true;
+            mountPath = "/tmp";
+          };
+        };
+      };
+
+      naming-verifier = {
+        namespace = cfg.namespace;
+        origin = "nixapps";
+        identity = "naming-runtime";
+        image = cfg.workerImage;
+        command = [ "/usr/local/bin/verification-worker" ];
+        scaling = "scale-to-zero";
+        env = databaseEnv // {
+          NAMING_VERIFIER_POLL_SECONDS = "5";
+          NAMING_VERIFIER_LEASE_SECONDS = "60";
+          NAMING_VERIFIER_MAX_ATTEMPTS = "4";
+          NAMING_VERIFIER_TIMEOUT_SECONDS = "90";
+        };
+        secrets = {
+          database = databaseSecret;
+        }
+        // lib.optionalAttrs (cfg.githubTokenSecretName != null) {
+          github = githubSecret;
         };
         security = {
           runAsNonRoot = true;
