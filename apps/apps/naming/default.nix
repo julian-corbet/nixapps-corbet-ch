@@ -128,6 +128,12 @@ in
       '';
     };
 
+    runTimeoutSeconds = lib.mkOption {
+      type = lib.types.ints.between 60 7200;
+      default = 900;
+      description = "Whole-run deadline including planning, registry checks, and judging.";
+    };
+
     maxActiveRuns = lib.mkOption {
       type = lib.types.ints.between 1 1000;
       description = "Maximum number of queued or running searches accepted by the control plane.";
@@ -222,6 +228,7 @@ in
           NAMING_WORKER_LEASE_SECONDS = "300";
           NAMING_WORKER_MAX_ATTEMPTS = "3";
           NAMING_MAX_NETWORK_CHECKS = toString cfg.maxNetworkChecks;
+          NAMING_RUN_TIMEOUT_SECONDS = toString cfg.runTimeoutSeconds;
         };
         secrets = {
           database = databaseSecret;

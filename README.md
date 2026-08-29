@@ -1,11 +1,10 @@
 # nixapps
 
-**The recipe contract, and nothing else. This repository currently holds no
-recipes.**
+**The recipe contract plus one current ordinary-app recipe: `apps.naming`.**
 
 It was a cookbook of 37 recipes for ordinary self-hosted applications, rendered
-to Argo CD manifests by [nixidy](https://github.com/arnarg/nixidy). Every one of
-them has since been handed to the repository that owns the application: the wiki
+to Argo CD manifests by [nixidy](https://github.com/arnarg/nixidy). Those original
+recipes have since been handed to the repository that owns each application: the wiki
 and the document managers to the office repository, the notebooks to the notes
 one, the archives to the vault, and so on. An app is declared by the repository
 whose subject it is, and a second description here was a duplicate nobody read.
@@ -93,10 +92,9 @@ The path is the option path, and the category is the Argo project, so the three
 cannot drift. **No central list of categories exists** — the flake discovers them
 by reading the directory, so adding a category means adding a directory.
 
-`apps/` is empty. It is kept rather than deleted because the discovery mechanism
-is the directory itself, and because this repository still binds an addressing
-band for an application that has no recipe here — see the fleet's own assignment
-record for what that means.
+`apps/apps/naming/` is the current recipe. It declares the portable web/API/worker
+needs for the Naming product; deployment values and every private address remain
+in the consuming repository.
 
 ## Rules
 
@@ -106,24 +104,20 @@ recipe and the contract disagree, the contract wins.
 
 ## What is proven, and what is not
 
-`nix flake check` renders every recipe in the repository against real nixidy,
-from the placeholder values in `examples/all/values.nix` — and with no recipes
-left it therefore renders nothing and compares nothing.
+`nix flake check` renders every recipe in the repository against real nixidy from
+the placeholder values in `examples/all/values.nix`.
 
-**A green check here no longer means the recipes are fine; it means the shell is
-intact.** Those are easy to confuse from a tick, so `recipe-count` states the
-number out loud and fails if the count and the render ever disagree. When this
-repository held recipes, the same check proved a recipe that stopped evaluating,
-or grew a required value nobody supplied, failed here instead of in a cluster.
+**A green check means the discovered recipe count and real nixidy render agree.**
+`recipe-count` states the number out loud and fails if discovery and rendering
+ever disagree. The same check proves a recipe that stops evaluating, or grows a
+required value nobody supplied, fails here instead of in a cluster.
 Both directions are checked: the render passes, and removing a required value
 fails by name. `examples/minimal` is the same mechanism narrowed to one recipe,
 as a flake you can build standalone.
 
-**No recipe has been adopted into a live cluster yet.** Every one was generalized
-from a system where that app genuinely runs, so the knowledge in them is real
-rather than invented — but "renders in CI" and "runs in production" are different
-claims, and this repository has only earned the first. Treat these as evaluated,
-not live-verified.
+`apps.naming` is adopted in the production cluster through the private infra
+consumer. The check remains a render proof; live verification is still a separate
+deployment claim made by that consumer.
 
 ## Related projects
 
